@@ -1,39 +1,35 @@
-# ControlAccesoRPI
+# RPiAccessControl
 
-Sistema de control de acceso mediante secuencia de pulsaciones en botones físicos conectados a las entradas GPIO de una Raspberry Pi. El sistema captura una secuencia de pulsaciones, la compara contra una clave válida configurada y muestra en terminal si el acceso fue autorizado o denegado.
+Access control system based on a sequence of presses on physical buttons connected to the GPIO inputs of a Raspberry Pi. The system captures a sequence of button presses, compares it against a configured valid key, and displays in the terminal whether access was granted or denied.
 
-## Características
+## Features
 
-Captura de pulsaciones desde botones físicos conectados a GPIO.
+Capture of button presses from physical buttons connected to GPIO.
 
-Almacenamiento temporal de la secuencia hasta alcanzar la longitud definida (entre 4 y 6 pulsaciones).
+Temporary storage of the sequence until it reaches the defined length (between 4 and 6 presses).
 
-Comparación automática de la secuencia capturada contra la clave válida configurada.
+Automatic comparison of the captured sequence against the configured valid key.
 
-Mensajes en terminal: Acceso autorizado o Acceso denegado.
+Terminal messages: Access granted or Access denied.
 
-Reinicio automático del estado de captura tras cada intento, sin necesidad de reiniciar el programa.
+Automatic reset of the capture state after each attempt, with no need to restart the program.
 
-Anti-rebote (debounce) para evitar registros duplicados por una sola pulsación física.
+Debounce logic to prevent duplicate registrations from a single physical press.
 
-Requisitos 
+## Requirements
 
 ## Hardware
 
-Raspberry Pi (modelo 5)
+Raspberry Pi (model 5)
 
 Monitor
 
-Teclado
+Keyboard
 
-Resistencias
+Resistors
 
-Cables jumper / protoboard
+Jumper wires / breadboard
 
 ## Software
 
-Raspberry Pi OS 
-
- 
-
- 
+Raspberry Pi OS
