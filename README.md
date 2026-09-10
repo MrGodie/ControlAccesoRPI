@@ -10,7 +10,9 @@ This is the first stage of a system that will grow throughout the semester. This
 |------|
 | Arantza Paola Jaime Quevedo |
 | Diego Hernández Alfaro |
-| Luis Aneg Gutiérrez Magallanes |
+| Luis Angel Gutiérrez Magallanes |
+| Hugo Buentello Arriaga |
+| Carlos Alberto Limon Escamilla |
 
 ## Features
 
