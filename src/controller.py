@@ -42,7 +42,7 @@ TIEMPO_DEBOUNCE = 0.2  # Tiempo para evitar rebotes
 
 # ============ INICIALIZACIÓN ============
 
-def inicializar():|
+def inicializar():
     """Configura los GPIOs"""
     GPIO.setmode(GPIO.BCM)
     GPIO.setwarnings(False)
