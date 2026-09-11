@@ -10,7 +10,9 @@ This is the first stage of a system that will grow throughout the semester. This
 |------|
 | Arantza Paola Jaime Quevedo |
 | Diego Hernández Alfaro |
-| Luis Aneg Gutiérrez Magallanes |
+| Luis Angel Gutiérrez Magallanes |
+| Hugo Buentello Arriaga |
+| Carlos Alberto Limon Escamilla |
 
 ## Features
 
@@ -21,35 +23,19 @@ This is the first stage of a system that will grow throughout the semester. This
 - Automatic reset of the capture state after each attempt, with no need to restart the program.
 - Debounce logic to prevent duplicate registrations from a single physical press.
 
-## Requirements
 
 ### Hardware
 
 - Raspberry Pi (model 5)
 - Monitor
 - Keyboard
-- 3 push buttons
+- 5 push buttons
 - Jumper wires / breadboard
 
 ### Software
 
 - [Add OS, Python version, libraries used, e.g. RPi.GPIO or gpiozero]
 
-## GPIO Pin Assignment
-
-| Button | GPIO Pin | Symbol |
-|--------|----------|--------|
-| Button 1 | [Pending] | 1 |
-| Button 2 | [Pending] | 2 |
-| Button 3 | [Pending] | 3 |
-
-## How to Run
-
-1. [Add setup step, e.g. clone the repo]
-2. [Add step, e.g. install dependencies]
-3. [Add step, e.g. connect buttons per the table above]
-4. Run the program: `[add command, e.g. python3 src/main.py]`
-5. Enter the sequence using the physical buttons. The result ("Access granted" / "Access denied") will be shown in the terminal.
 
 ## Evidence of Result
 
@@ -64,6 +50,9 @@ ControlAccesoRPI/
 ├── traceability.md
 ├── docs/
 │   └── flow.md
+│   └── dfd-0.md
+│   └── dfd-1.md
+│   └── system_flowchart.md
 └── src/
-    └── ...
+    └── controller.py
 ```
