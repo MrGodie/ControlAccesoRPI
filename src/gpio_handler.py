@@ -23,6 +23,10 @@ from config import (
 def inicializar():
     GPIO.setmode(GPIO.BCM)
     GPIO.setwarnings(False)
+    GPIO.setup(BOCINA, GPIO.OUT)
+    GPIO.setup(SERVO, GPIO.OUT)
+    pwm_servo = GPIO.PWM(SERVO, 50)  # 50Hz típico para servos
+    pwm_servo.start(0)
 
     # Botones conectados entre GPIO y GND
     for num, gpio in BOTONES.items():

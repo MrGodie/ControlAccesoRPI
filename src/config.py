@@ -4,6 +4,8 @@
 Configuración centralizada del sistema.
 Modificar aquí no requiere tocar la lógica de GPIO ni de validación.
 """
+BOCINA = 27
+SERVO = 26
 
 BOTONES = {
     1: 4,
