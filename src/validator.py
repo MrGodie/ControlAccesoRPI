@@ -14,14 +14,13 @@ from config import CONTRASEÑA
 import db
 
 def verificar_credencial(secuencia):
-    """
-    Reemplaza la comparación fija por consulta a MySQL.
-    Retorna (usuario_o_None, resultado)
-    """
     credencial = "".join(map(str, secuencia))
-    usuario = db.obtener_usuario_por_credencial(credencial, credencial)
+    resultado_db = db.obtener_usuario_por_credencial(credencial, credencial)
 
-    if usuario:
-        return usuario, "autorizado"
+    if resultado_db == "ERROR_CONEXION":
+        return None, "error_sistema"
+    elif resultado_db:
+        return resultado_db, "autorizado"
     else:
         return None, "denegado_no_reconocido"
+    
