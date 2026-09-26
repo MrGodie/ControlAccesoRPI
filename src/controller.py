@@ -16,15 +16,23 @@ def main():
     try:
         gpio_handler.inicializar()
         print("Contraseña actual:", CONTRASEÑA)
-        print("Presiona los botones en el orden correcto...")
+        print("Sistema de acceso iniciado.")
 
         while True:
             print("\n" + "=" * 50)
             print("NUEVO INTENTO")
             print("=" * 50)
 
-            secuencia_usuario = gpio_handler.esperar_botones(len(CONTRASEÑA))
+            # Esperar hasta detectar presencia mediante el PIR
+            gpio_handler.esperar_presencia()
 
+            # Solicitar la contraseña mediante los botones
+            print("Presencia detectada. Introduce la contraseña.")
+            secuencia_usuario = gpio_handler.esperar_botones(
+                len(CONTRASEÑA)
+            )
+
+            # Validar la secuencia introducida
             if validador.verificar_contraseña(secuencia_usuario):
                 gpio_handler.indicar_exito()
             else:

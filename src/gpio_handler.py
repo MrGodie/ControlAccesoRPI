@@ -2,13 +2,22 @@
 # -*- coding: utf-8 -*-
 """
 Manejo directo de GPIO: inicialización, lectura de botones,
-control de LEDs y limpieza. No contiene lógica de validación.
+control de LEDs, detección de presencia y limpieza.
+No contiene lógica de validación.
 """
 
 import time
 import RPi.GPIO as GPIO
 
-from config import BOTONES, LEDS, LED_VERDE, LED_ROJO, TIEMPO_LED, TIEMPO_DEBOUNCE
+from config import (
+    BOTONES,
+    LEDS,
+    LED_VERDE,
+    LED_ROJO,
+    PIR,
+    TIEMPO_LED,
+    TIEMPO_DEBOUNCE
+)
 
 
 def inicializar():
@@ -23,6 +32,7 @@ def inicializar():
             pull_up_down=GPIO.PUD_UP
         )
 
+    # Configuración de los LEDs
     for num, gpio in LEDS.items():
         GPIO.setup(gpio, GPIO.OUT)
         GPIO.output(gpio, GPIO.LOW)
@@ -32,6 +42,9 @@ def inicializar():
 
     GPIO.output(LED_VERDE, GPIO.LOW)
     GPIO.output(LED_ROJO, GPIO.LOW)
+
+    # Configuración del sensor PIR
+    GPIO.setup(PIR, GPIO.IN)
 
     print("Sistema inicializado correctamente")
 
@@ -56,6 +69,32 @@ def indicar_error():
     GPIO.output(LED_ROJO, GPIO.HIGH)
     time.sleep(2)
     GPIO.output(LED_ROJO, GPIO.LOW)
+
+
+def esperar_presencia(timeout=None):
+    """
+    Espera hasta detectar movimiento en el sensor PIR.
+
+    Args:
+        timeout (float | None):
+            Tiempo máximo de espera en segundos.
+            Si es None, espera indefinidamente.
+
+    Returns:
+        bool: True si detecta presencia; False si expira el timeout.
+    """
+    print("Esperando presencia...")
+    inicio = time.time()
+
+    while GPIO.input(PIR) == GPIO.LOW:
+
+        if timeout is not None and (time.time() - inicio) > timeout:
+            return False
+
+        time.sleep(0.1)
+
+    print("Presencia detectada")
+    return True
 
 
 def esperar_botones(longitud_esperada):
