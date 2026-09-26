@@ -10,7 +10,7 @@ logic to the MySQL database".
 """
 
 from config import CONTRASEÑA
-# validador.py — reemplazar verificar_contraseña()
+
 import db
 
 def verificar_credencial(secuencia):

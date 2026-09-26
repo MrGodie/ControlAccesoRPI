@@ -70,7 +70,14 @@ def indicar_error():
     time.sleep(2)
     GPIO.output(LED_ROJO, GPIO.LOW)
 
-
+def indicar_error_sistema():
+    print("ERROR DEL SISTEMA - No se pudo validar")
+    for _ in range(3):
+        GPIO.output(LED_ROJO, GPIO.HIGH)
+        time.sleep(0.2)
+        GPIO.output(LED_ROJO, GPIO.LOW)
+        time.sleep(0.2)
+        
 def esperar_presencia(timeout=None):
     """
     Espera hasta detectar movimiento en el sensor PIR.
