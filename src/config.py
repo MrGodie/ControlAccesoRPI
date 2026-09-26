@@ -9,20 +9,21 @@ BOTONES = {
     1: 4,
     2: 5,
     3: 6,
-    4: 17,
-    5: 22
 }
 
 LEDS = {
     1: 18,
     2: 19,
     3: 20,
-    4: 21,
-    5: 24
 }
 
 LED_VERDE = 12
 LED_ROJO = 13
+
+# Nuevos dispositivos v2
+PIR = 16
+BOCINA = 27
+SERVO = 26
 
 CONTRASEÑA = [1, 3, 5, 2, 4]
 
