@@ -10,12 +10,18 @@ logic to the MySQL database".
 """
 
 from config import CONTRASEÑA
+# validador.py — reemplazar verificar_contraseña()
+import db
 
+def verificar_credencial(secuencia):
+    """
+    Reemplaza la comparación fija por consulta a MySQL.
+    Retorna (usuario_o_None, resultado)
+    """
+    credencial = "".join(map(str, secuencia))
+    usuario = db.obtener_usuario_por_credencial(credencial, credencial)
 
-def verificar_contraseña(secuencia):
-    if secuencia == CONTRASEÑA:
-        return True
+    if usuario:
+        return usuario, "autorizado"
     else:
-        print("Esperabas:", CONTRASEÑA)
-        print("Presionaste:", secuencia)
-        return False
+        return None, "denegado_no_reconocido"
