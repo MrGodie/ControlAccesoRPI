@@ -14,6 +14,10 @@ def reproducir_audio_exito():
 
 
 def activar_actuador():
-    gpio_handler.pwm_servo.ChangeDutyCycle(7)   # posición abierta
+    servo = gpio_handler.pwm_servo
+
+    servo.ChangeDutyCycle(7)    # posición abierta
     time.sleep(2)
-    gpio_handler.pwm_servo.ChangeDutyCycle(2)   # posición cerrada
+    servo.ChangeDutyCycle(2)    # posición cerrada
+    time.sleep(0.5)             # dar tiempo a llegar a la posición
+    servo.ChangeDutyCycle(0)    # dejar de enviar pulsos: evita vibración

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Manejo directo de GPIO: inicialización, lectura de botones y PIR,
-control de LEDs y limpieza. No contiene lógica de validación.
+Manejo directo de GPIO: botones, LEDs, PIR, bocina y servo.
+No contiene lógica de validación.
 """
 
 import time
@@ -13,7 +13,7 @@ from config import (
     TIEMPO_LED, TIEMPO_INDICADOR, TIEMPO_DEBOUNCE
 )
 
-pwm_servo = None  # se inicializa dentro de inicializar()
+pwm_servo = None  # se crea en inicializar()
 
 
 def inicializar():
@@ -41,7 +41,7 @@ def inicializar():
     GPIO.output(BOCINA, GPIO.LOW)
 
     GPIO.setup(SERVO, GPIO.OUT)
-    pwm_servo = GPIO.PWM(SERVO, 50)  # 50Hz típico para servos
+    pwm_servo = GPIO.PWM(SERVO, 50)  # 50 Hz típico para servos
     pwm_servo.start(0)
 
     print("Sistema inicializado correctamente")
@@ -68,10 +68,7 @@ def indicar_error():
 
 
 def indicar_error_sistema():
-    """
-    Distinto de indicar_error(): usa un patrón de parpadeo para
-    que sea visualmente diferenciable de un rechazo normal (NFR-04).
-    """
+    """Parpadeo del LED rojo: distinto de un rechazo normal (NFR-04)."""
     print("ERROR DEL SISTEMA - No se pudo validar")
     for _ in range(3):
         GPIO.output(LED_ROJO, GPIO.HIGH)
@@ -82,8 +79,8 @@ def indicar_error_sistema():
 
 def esperar_presencia(timeout=None):
     """
-    Espera hasta detectar movimiento en el PIR.
-    Si se define timeout (segundos), retorna False si no detecta nada.
+    Espera a que el PIR detecte movimiento.
+    Retorna False si se define timeout (segundos) y no hubo detección.
     """
     print("Esperando presencia...")
     inicio = time.time()
@@ -97,6 +94,20 @@ def esperar_presencia(timeout=None):
     return True
 
 
+def esperar_fin_presencia(timeout=10):
+    """
+    El PIR mantiene su salida en alto unos segundos tras detectar
+    movimiento. Esperar a que baje evita que la misma persona dispare
+    un ciclo nuevo inmediatamente. El timeout evita bloqueos si el
+    sensor se queda pegado en alto.
+    """
+    inicio = time.time()
+    while GPIO.input(PIR) == GPIO.HIGH:
+        if (time.time() - inicio) > timeout:
+            break
+        time.sleep(0.1)
+
+
 def esperar_botones(longitud_esperada):
     secuencia = []
     print("Esperando botones...")
@@ -107,7 +118,6 @@ def esperar_botones(longitud_esperada):
             if GPIO.input(gpio) == GPIO.LOW:
                 secuencia.append(num)
                 print(f"Botón {num} presionado")
-                print("Secuencia actual:", secuencia)
 
                 encender_led(num)
 
