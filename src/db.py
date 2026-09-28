@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""
+Conexión a MySQL/MariaDB. Las credenciales de conexión se leen de
+variables de entorno; nunca deben quedar escritas en el repositorio.
+"""
 
 import os
 import mysql.connector
@@ -15,39 +19,37 @@ def conectar():
     )
 
 
-def obtener_usuario_por_credencial(identificador, credencial_hash):
-    """
-    Retorna un dict con {id, nombre, rol} si la credencial es válida,
-    None si no se reconoce, o "ERROR_CONEXION" si falla la conexión/consulta.
-    """
+def obtener_usuario_por_credencial(credencial):
+  
     try:
         conexion = conectar()
     except Error as e:
         print("Error de conexión a BD:", e)
         return "ERROR_CONEXION"
 
+    cursor = None
     try:
         cursor = conexion.cursor(dictionary=True)
         cursor.execute(
-            "SELECT u.id, u.nombre, r.nombre AS rol "
+            "SELECT u.id, u.nombre, r.nombre AS rol, r.acceso_permitido "
             "FROM usuarios u JOIN roles r ON u.rol_id = r.id "
-            "WHERE u.identificador = %s AND u.credencial_hash = %s AND u.activo = TRUE",
-            (identificador, credencial_hash)
+            "WHERE u.credencial_hash = SHA2(%s, 256)",
+            (credencial,)
         )
-        usuario = cursor.fetchone()
-        return usuario  # None si no existe
+        return cursor.fetchone()
     except Error as e:
         print("Error al consultar usuario:", e)
         return "ERROR_CONEXION"
     finally:
-        cursor.close()
+        if cursor:
+            cursor.close()
         conexion.close()
 
 
-def registrar_intento(usuario_id, metodo, resultado, detalle=None):
+def registrar_intento(usuario_id, metodo, resultado):
     """
-    Inserta un intento de acceso. No debe interrumpir el flujo
-    principal si falla — solo se reporta el problema.
+    Inserta un intento de acceso. Si falla, solo se reporta:
+    no debe interrumpir el flujo principal.
     """
     try:
         conexion = conectar()
@@ -55,12 +57,13 @@ def registrar_intento(usuario_id, metodo, resultado, detalle=None):
         print("No se pudo registrar el intento (fallo de conexión):", e)
         return False
 
+    cursor = None
     try:
         cursor = conexion.cursor()
         cursor.execute(
-            "INSERT INTO intentos_acceso (usuario_id, metodo, resultado, detalle) "
-            "VALUES (%s, %s, %s, %s)",
-            (usuario_id, metodo, resultado, detalle)
+            "INSERT INTO intentos_acceso (usuario_id, metodo, resultado, fecha_hora) "
+            "VALUES (%s, %s, %s, NOW())",
+            (usuario_id, metodo, resultado)
         )
         conexion.commit()
         return True
@@ -68,5 +71,6 @@ def registrar_intento(usuario_id, metodo, resultado, detalle=None):
         print("Error al registrar el intento:", e)
         return False
     finally:
-        cursor.close()
+        if cursor:
+            cursor.close()
         conexion.close()

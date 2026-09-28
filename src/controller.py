@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""
+Punto de entrada del sistema. Orquesta GPIO, GUI, validación,
+salida y registro, sin contener lógica propia de ninguno.
+"""
+
 import time
 
-from config import CONTRASEÑA
+from config import LONGITUD_CLAVE
 import gpio_handler
 import validator
 import exit
@@ -12,7 +17,7 @@ import db
 
 def procesar_resultado(usuario, resultado, metodo):
     """
-    Reacciona ante el resultado de validación y registra el intento,
+    Reacciona al resultado de validación y registra el intento,
     sin importar si vino de la GUI o de los botones físicos.
     """
     if resultado == "autorizado":
@@ -21,12 +26,11 @@ def procesar_resultado(usuario, resultado, metodo):
         exit.activar_actuador()
     elif resultado == "error_sistema":
         gpio_handler.indicar_error_sistema()
-    else:
+    else:  # denegado_sin_permiso / denegado_no_reconocido
         gpio_handler.indicar_error()
 
-    usuario_id = usuario["id"] if usuario else None
     db.registrar_intento(
-        usuario_id=usuario_id,
+        usuario_id=usuario["id"] if usuario else None,
         metodo=metodo,
         resultado=resultado
     )
@@ -42,28 +46,31 @@ def main():
             print("NUEVO CICLO")
             print("=" * 50)
 
-            # Esperar hasta detectar presencia mediante el PIR
-            presencia = gpio_handler.esperar_presencia(timeout=30)
-
-            if not presencia:
+            # Esperar presencia mediante el PIR (no autoriza, solo inicia)
+            if not gpio_handler.esperar_presencia(timeout=30):
                 print("Sin presencia detectada, reiniciando espera...")
                 continue
 
-            print("Presencia detectada.")
-
-            # Elegir método de identificación disponible
+            # Elegir la vía de identificación disponible
             if gui.gui_disponible():
-                print("Usando interfaz gráfica...")
+                print("Identificación mediante interfaz gráfica.")
                 usuario, resultado = gui.iniciar_gui_bloqueante()
                 metodo = "gui"
+
+                if resultado is None:
+                    print("Ventana cerrada sin validar. Volviendo a espera.")
+                    gpio_handler.esperar_fin_presencia()
+                    continue
             else:
-                print("GUI no disponible. Introduce la contraseña con los botones.")
-                secuencia_usuario = gpio_handler.esperar_botones(len(CONTRASEÑA))
-                usuario, resultado = validator.verificar_credencial(secuencia_usuario)
+                print("GUI no disponible. Introduce la clave con los botones.")
+                secuencia = gpio_handler.esperar_botones(LONGITUD_CLAVE)
+                usuario, resultado = validator.verificar_credencial(secuencia)
                 metodo = "botones"
 
             procesar_resultado(usuario, resultado, metodo)
 
+            # Volver a un estado estable antes del siguiente ciclo
+            gpio_handler.esperar_fin_presencia()
             print("Esperando un nuevo intento...")
             time.sleep(1)
 
