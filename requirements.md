@@ -6,7 +6,7 @@ FR-02. The system shall display the message "Access granted" on the terminal whe
 
 FR-03. The system shall reset the capture state (clear the stored sequence) immediately after displaying the result, allowing a new attempt without restarting the program.
 
-FR-04. The system shall allow the valid key and the required sequence length (4 to 6 presses) to be modified by editing a single configuration variable or data structure in the source code, without requiring changes to the input-reading or comparison logic.
+FR-04. The system shall allow the valid key and the required sequence length (3) to be modified by editing a single configuration variable or data structure in the source code, without requiring changes to the input-reading or comparison logic.
 
 FR-05. The system shall provide immediate terminal feedback confirming that each individual press has been registered, without revealing the configured valid key, the required sequence length, or the number of presses captured so far.
 
