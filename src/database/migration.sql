@@ -84,3 +84,22 @@ WHERE nombre IN ('administrador', 'usuario_estandar');
 UPDATE roles
 SET acceso_permitido = FALSE
 WHERE nombre = 'visitante';
+
+-- -----------------------------------------------------
+-- 7. Biometric data table (PIC-11).
+-- Safe to run many times: it only creates the table if missing.
+-- -----------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS datos_biometricos (
+  id              INT          NOT NULL AUTO_INCREMENT,
+  usuario_id      INT          NOT NULL,
+  tipo            VARCHAR(20)  NOT NULL DEFAULT 'facial',
+  embedding       BLOB         NOT NULL,  -- serialized face template (bytes)
+  modelo          VARCHAR(50)  NOT NULL,  -- library/model that produced it
+  fecha_registro  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_biometricos_usuario (usuario_id),
+  CONSTRAINT fk_biometricos_usuarios
+    FOREIGN KEY (usuario_id) REFERENCES usuarios (id)
+    ON DELETE CASCADE
+) ENGINE = InnoDB;
