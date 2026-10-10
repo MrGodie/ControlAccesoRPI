@@ -9,18 +9,25 @@ import os
 import mysql.connector
 from mysql.connector import Error
 
+from config import TIEMPO_ESPERA_BD
+
+_SELECT_USUARIO = (
+    "SELECT u.id, u.nombre, r.nombre AS rol, r.acceso_permitido "
+    "FROM usuarios u JOIN roles r ON u.rol_id = r.id "
+)
+
 
 def conectar():
     return mysql.connector.connect(
         host=os.environ.get("DB_HOST", "localhost"),
         user=os.environ.get("DB_USER", "control_acceso_app"),
         password=os.environ.get("DB_PASSWORD", ""),
-        database=os.environ.get("DB_NAME", "control_acceso")
+        database=os.environ.get("DB_NAME", "control_acceso"),
+        connection_timeout=TIEMPO_ESPERA_BD,
     )
 
 
-def obtener_usuario_por_credencial(credencial):
-  
+def _consultar_usuario(condicion, parametros):
     try:
         conexion = conectar()
     except Error as e:
@@ -30,12 +37,7 @@ def obtener_usuario_por_credencial(credencial):
     cursor = None
     try:
         cursor = conexion.cursor(dictionary=True)
-        cursor.execute(
-            "SELECT u.id, u.nombre, r.nombre AS rol, r.acceso_permitido "
-            "FROM usuarios u JOIN roles r ON u.rol_id = r.id "
-            "WHERE u.credencial_hash = SHA2(%s, 256)",
-            (credencial,)
-        )
+        cursor.execute(_SELECT_USUARIO + condicion, parametros)
         return cursor.fetchone()
     except Error as e:
         print("Error al consultar usuario:", e)
@@ -44,6 +46,26 @@ def obtener_usuario_por_credencial(credencial):
         if cursor:
             cursor.close()
         conexion.close()
+
+
+def obtener_usuario_por_credencial(credencial):
+    """Flujo de botones: la clave identifica al usuario."""
+    return _consultar_usuario(
+        "WHERE u.credencial_hash = SHA2(%s, 256)", (credencial,)
+    )
+
+
+def obtener_usuario_por_id(usuario_id, credencial=None):
+    """
+    Flujo de la GUI: se busca por ID. Si se entrega una credencial,
+    su hash también debe coincidir con el del usuario.
+    """
+    if credencial is None:
+        return _consultar_usuario("WHERE u.id = %s", (usuario_id,))
+    return _consultar_usuario(
+        "WHERE u.id = %s AND u.credencial_hash = SHA2(%s, 256)",
+        (usuario_id, credencial),
+    )
 
 
 def registrar_intento(usuario_id, metodo, resultado):
