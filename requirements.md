@@ -22,6 +22,14 @@ FR-10. The system shall issue an audible response (e.g., a voice message or a to
 
 FR-11. The system shall distinguish—both in its user response and in the stored log—between the following outcomes: access authorized, access denied due to insufficient permissions, access denied due to unrecognized credentials, and inability to complete validation due to a database connection failure.
 
+FR-12. The system shall acquire images or video stably from a camera connected to the system, and shall shall detect a face presented to the camera and identify it by comparing it against the biometric representations of the enrolled users, returning either the matching user or no match. After a user is identified by facial recognition, the system shall query the user's permissions, authorize or deny the access accordingly, and trigger the same audible and physical responses as the other identification methods.
+
+FR-13. The system shall provide a guided facial enrollment flow through which an administrator registers a new user: entering the user's information, capturing multiple valid facial samples through the live camera, and receiving an on-screen confirmation when the enrollment is completed successfully.
+
+FR-14. The system shall store the biometric representation (facial template) of each enrolled user in the local database, associated with that user and with their permissions, such that deleting the user also deletes their biometric data.
+ 
+
+
 # Non-Functional Requirements (NFR)
 
 NFR-01. The system shall implement a debounce technique such that a single physical press does not generate more than one record in 95% of the test presses performed.
@@ -35,3 +43,7 @@ NFR-04. A database connection failure shall never be communicated to the user or
 NFR-05. The graphical user interface, validation logic, and data access layer will be implemented as independent modules, such that the validation logic can be invoked identically from both the GUI and the button-based input path.
 
 NFR-06. Credentials, passwords, or database connection secrets shall not be stored in plain text in any file committed to the repository.
+
+NFR-07. Facial detection, facial identification, biometric storage and the access decision shall run entirely on the local system, without using external or cloud-based recognition services.
+
+NFR-08. The system shall store only the biometric template of each user in the database and shall not persist the captured face images.
