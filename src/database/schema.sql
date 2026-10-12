@@ -30,7 +30,30 @@ CREATE TABLE IF NOT EXISTS usuarios (
 ) ENGINE = InnoDB;
 
 -- -----------------------------------------------------
+-- Tabla: datos_biometricos
+-- Facial templates linked to a user. A user can have several
+-- samples; deleting the user deletes their biometric data.
+-- Only the template is stored, never the face images.
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS datos_biometricos (
+  id              INT          NOT NULL AUTO_INCREMENT,
+  usuario_id      INT          NOT NULL,
+  tipo            VARCHAR(20)  NOT NULL DEFAULT 'facial',
+  embedding       BLOB         NOT NULL,  -- serialized face template (bytes)
+  modelo          VARCHAR(50)  NOT NULL,  -- library/model that produced it
+  fecha_registro  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_biometricos_usuario (usuario_id),
+  CONSTRAINT fk_biometricos_usuarios
+    FOREIGN KEY (usuario_id) REFERENCES usuarios (id)
+    ON DELETE CASCADE
+) ENGINE = InnoDB;
+
+-- -----------------------------------------------------
 -- Tabla: intentos_acceso
+-- metodo: 'gui' | 'botones' | 'facial'
+-- usuario_id es NULL cuando no se identifica a nadie
+-- (rostro o credencial no reconocidos, fallo del sistema).
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS intentos_acceso (
   id          INT          NOT NULL AUTO_INCREMENT,
