@@ -1,51 +1,40 @@
 ``` mermaid
-flowchart LR
-    Start([Inicio: usuario se acerca])
+flowchart TB
+    S([Start]) --> PIR[PIR detects presence]
+    PIR --> C{Camera and GUI available?}
+    C -- No --> BTN[Fallback: PIN via buttons]
+    C -- Yes --> CAM[Capture frame]
+    CAM --> F{Face detected?}
+    F -- No --> R{Retries left?}
+    R -- Yes --> CAM
+    R -- No --> DENY
+    F -- Yes --> REC[Local recognition: match against stored embeddings]
+    REC --> K{Known face?}
+    K -- No, unknown face --> DENY
+    K -- Yes --> PERM
+    BTN --> PERM[Query user role and permissions in DB]
+    PERM --> A{Authorized?}
+    A -- Yes --> GRANT[Grant access: actuator + audio]
+    A -- No --> DENY[Deny access: show message]
+    GRANT --> LOG
+    DENY --> LOG[Log event: user, method, result, timestamp]
+    LOG --> REL[Release camera, return to idle]
+    REL --> E([End])
 
-    subgraph Usuario
-        Start
-        Botones[Botones físicos<br/>Usuario ingresa clave]
-        Identifica[Se identifica<br/>Datos por interfaz gráfica]
-        Notifica[Notifica resultado<br/>Mensaje / audio al usuario]
-    end
+    ADM[Admin registers user: name and role] --> NEW[Create user in DB]
+    NEW --> CAP[Guided capture of multiple face samples]
+    CAP --> V{Enough valid samples?}
+    V -- No --> CAP
+    V -- Yes --> SAVE[Store embeddings locally, linked to user]
+    SAVE --> OK[Show enrollment confirmation]
+    OK --> REL
 
-    subgraph Sistema_RPi [Sistema · Raspberry Pi]
-        PIR[Sensor PIR<br/>Detecta presencia]
-        GW1{¿Interfaz gráfica<br/>disponible?}
-        Interfaz[Interfaz gráfica<br/>Se muestra en el monitor]
-        GW2{¿Autorizado?}
-        Autoriza[Autoriza acceso<br/>Actuador + audio OK]
-        Rechaza[Rechaza acceso<br/>Muestra mensaje]
-        Registra[Registra intento<br/>Fecha, usuario, resultado]
-        End([Fin: vuelve a espera])
-    end
-
-    subgraph BD [Base de datos · MySQL]
-        Valida[Valida credenciales<br/>Consulta rol y permisos]
-    end
-
-    Start --> PIR
-    PIR --> GW1
-    GW1 -- Si --> Interfaz
-    GW1 -- No --> Botones
-    Interfaz --> Identifica
-    Identifica --> Valida
-    Botones -. misma logica .-> Valida
-    Valida --> GW2
-    GW2 -- Si --> Autoriza
-    GW2 -- No --> Rechaza
-    Autoriza --> Notifica
-    Rechaza --> Notifica
-    Notifica --> Registra
-    Registra --> End
-
-    classDef taskNormal fill:#DCEEFB,stroke:#2E75B6,color:#1B4B72;
-    classDef taskAlt fill:#FDEBD3,stroke:#C87F0A,color:#7A4A05;
     classDef ok fill:#E4F3DE,stroke:#548235,color:#375623;
     classDef bad fill:#FBE2E1,stroke:#C0504D,color:#7A2E2C;
-
-    class PIR,Interfaz,Identifica,Notifica,Registra taskNormal;
-    class Botones taskAlt;
-    class Autoriza ok;
-    class Rechaza bad;
+    classDef alt fill:#FDEBD3,stroke:#C87F0A,color:#7A4A05;
+    classDef face fill:#EADCF8,stroke:#7030A0,color:#44205F;
+    class GRANT,OK ok;
+    class DENY bad;
+    class BTN alt;
+    class CAM,REC,CAP,SAVE face;
     ```
