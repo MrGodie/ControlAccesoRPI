@@ -20,6 +20,7 @@ from config import (
     TIEMPO_PANTALLA_DENEGADO,
     TIEMPO_PANTALLA_FALLO,
 )
+import camera
 import gpio_handler
 import validator
 import exit
@@ -137,6 +138,12 @@ def main():
         gpio_handler.inicializar()
         print("Sistema de acceso iniciado.")
 
+        # La cámara es opcional: si falla, la GUI y los botones siguen activos
+        camara_ok, mensaje_camara = camera.verificar_camara()
+        print("Cámara:", mensaje_camara)
+        if not camara_ok:
+            print("El reconocimiento facial no estará disponible.")
+
         interfaz = gui.crear_interfaz() if gui.gui_disponible() else None
 
         if interfaz is not None:
@@ -156,6 +163,7 @@ def main():
 
     finally:
         detener.set()
+        camera.liberar_camara()
         gpio_handler.limpiar()
 
 
