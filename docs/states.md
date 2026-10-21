@@ -1,23 +1,31 @@
+```mermaid
 flowchart TD
-    A[Inicializar sistema] --> B{Hardware y BD OK?}
-    B -- No --> C[Modo degradado: solo botones]
-    B -- Sí --> D[Reposo]
+    A[Initialize system] --> B{Hardware, camera and DB OK?}
+    B -- No --> C[Degraded mode: buttons only]
+    B -- Yes --> D[Idle]
     C --> D
-    D --> E{PIR detecta presencia?}
-    E -- No --> F[Notificar: sin presencia detectada]
-    F --> G{Seguir esperando?}
-    G -- Sí --> D
-    G -- No --> A
-    E --> I[Capturar secuencia]
-    I --> J{Logitud Valida?}
-    J -- No -->I
-    J -- Sí --> K[Validar contra base de datos]
-    K --> L{Resultado}
-    L -- Autorizado --> M[Mostrar: Acceso autorizado]
-    L -- Sin permiso --> N[Mostrar: Acceso denegado]
-    L -- Credencial inválida --> N
-    L -- Sin respuesta de BD --> O[Mostrar: Error del sistema]
-    M --> P[Registrar intento]
-    N --> P
-    O --> P
-    N --> D
+    D --> M{Enrollment requested?}
+    M -- Yes --> EN[Create user and role, guided face capture, store embeddings linked to user]
+    EN --> V{Enough valid samples?}
+    V -- No --> EN
+    V -- Yes --> CF[Show enrollment confirmation]
+    CF --> REL
+    M -- No --> E{PIR detects presence?}
+    E -- No --> D
+    E -- Yes --> H{Method}
+    H -- Face --> I[Capture frame, recognize locally]
+    I --> K{Known face?}
+    K -- No, unknown --> N
+    K -- Yes --> Q
+    H -- Buttons or camera unavailable --> BT[Capture PIN]
+    BT --> Q[Query role and permissions in DB]
+    Q --> S{Result}
+    S -- Authorized --> OK[Access granted, activate actuator]
+    S -- No permission or invalid --> N[Access denied]
+    S -- DB no response --> ERR[System error]
+    OK --> LOG
+    N --> LOG
+    ERR --> LOG[Log: user, method, result, timestamp]
+    LOG --> REL[Release camera]
+    REL --> D
+```

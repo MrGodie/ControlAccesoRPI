@@ -1,22 +1,25 @@
 ```mermaid
 flowchart LR
-    U[Usuario]
-    A[Administrador]
-    DB[(Base de datos MySQL)]
-    S((Sistema de Control de Acceso v2))
+    U[User]
+    A[Administrator]
+    CAM[Camera]
+    DB[(Local MySQL database)]
+    S((Access Control System v1.0))
 
-    U -->|Presencia detectada por PIR| S
-    U -->|Identificación y PIN mediante interfaz gráfica| S
-    U -->|Identificación y PIN mediante botones físicos| S
+    U -->|Presence via PIR| S
+    U -->|Face presented to camera| CAM
+    CAM -->|Image frames| S
+    U -->|Code and PIN via GUI or buttons: fallback| S
 
-    S -->|Mensaje en pantalla: autorizado / sin permiso / no reconocido / error del sistema| U
-    S -->|Mensaje audible: Acceso correcto| U
-    S -->|Activación del actuador de apertura| U
+    S -->|Screen message: granted / denied / unknown face / system error| U
+    S -->|Success or denial audio| U
+    S -->|Actuator activation| U
 
-    A -->|Alta de usuarios, roles y credenciales de 4-6 dígitos| DB
-    DB -->|Registro de intentos para consulta| A
+    A -->|Register users, roles, PIN and facial enrollment| S
+    S -->|Enrollment confirmation| A
+    A -->|Query access logs| DB
 
-    S -->|Consulta usuario, credencial y rol| DB
-    DB -->|Datos del usuario o falla de conexión| S
-    S -->|Registra intento: usuario, método, resultado, fecha y hora| DB
+    S -->|Query user, role, permissions and face embeddings| DB
+    DB -->|User data or connection failure| S
+    S -->|Store embeddings and log: user, method, result, timestamp| DB
 ```

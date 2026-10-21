@@ -1,43 +1,47 @@
 ```mermaid
 sequenceDiagram
-    actor U as Usuario
-    participant PIR as hw.pir
+    actor U as User
     participant GUI as ui.gui
+    participant CAM as hw.camera
+    participant FACE as core.face
     participant Core as core.auth
     participant DB as data.db
-    participant MySQL as MySQL
-    participant Log as data.bitacora
-    participant HW as hw.actuador / hw.audio
+    participant HW as hw.actuator / audio
 
-    U->>PIR: Se aproxima al punto de acceso
-    PIR->>GUI: evento_presencia()
-    GUI->>GUI: Cambiar a pantalla de identificación
-    GUI-->>U: Solicitar código y clave
+    U->>GUI: Approaches (PIR presence_event)
 
-    U->>GUI: Ingresa código y clave
-    GUI->>Core: validar(codigo, clave, canal="GUI")
+    alt Facial (primary)
+        GUI->>CAM: start_capture()
+        U->>CAM: Presents face
+        CAM->>FACE: frame
+        FACE->>DB: get_embeddings()
+        DB-->>FACE: Stored embeddings
+        FACE->>FACE: match(embedding, threshold)
+        alt Known face
+            FACE-->>Core: user_id
+            Core->>DB: has_permission(user_id)
+            DB-->>Core: True / False
+        else Unknown face
+            FACE-->>Core: null
+            Core->>Core: DENIED (UNKNOWN_FACE)
+        end
+    else Fallback: buttons
+        U->>GUI: Enters code and PIN
+        GUI->>Core: validate(code, pin)
+        Core->>DB: verify credential and permission
+        DB-->>Core: True / False
+    end
 
-    Core->>DB: obtener_usuario(codigo)
-    DB->>MySQL: SELECT usuario JOIN rol
-    MySQL-->>DB: Registro del usuario
-    DB-->>Core: Usuario y rol
+    Core->>DB: log(user_id, method, result, timestamp)
+    Core-->>GUI: GRANTED / DENIED
+    GUI->>CAM: release()
 
-    Core->>Core: verificar_hash(clave, clave_hash)
-    Core->>DB: tiene_permiso(rol_id, punto_acceso_id)
-    DB->>MySQL: SELECT permiso
-    MySQL-->>DB: Permiso encontrado
-    DB-->>Core: True
-
-    Core->>Log: registrar(usuario, canal, "AUTORIZADO")
-    Log->>MySQL: INSERT intento_acceso
-    MySQL-->>Log: OK
-    Core-->>GUI: Resultado.AUTORIZADO
-
-    GUI-->>U: Mostrar "Acceso autorizado"
-    GUI->>HW: reproducir("acceso_correcto.wav")
-    HW-->>U: Audio "Acceso correcto"
-    GUI->>HW: abrir(5)
-    HW-->>U: Actuador activado 5 s
-    HW->>GUI: cerrado
-    GUI->>GUI: Regresar a reposo
+    alt GRANTED
+        GUI->>HW: play audio and open(5)
+        HW-->>U: Access granted
+    else DENIED
+        GUI->>HW: play denial audio
+        HW-->>U: Access denied
+    end
+    GUI->>GUI: Return to idle
 ```
