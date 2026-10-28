@@ -50,7 +50,7 @@ TIEMPO_PANTALLA_FALLO = 4
 
 # --- Camera (facial recognition subsystem) ---
 # "opencv": USB webcam or video file | "picamera2": Raspberry Pi camera module
-CAMARA_BACKEND = "opencv"
+CAMARA_BACKEND = "picamera2"
 CAMARA_FUENTE = 0                    # opencv only: device index (0, 1...) or video file path (for tests)
 CAMARA_ANCHO = 640
 CAMARA_ALTO = 480
