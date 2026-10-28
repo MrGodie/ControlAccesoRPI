@@ -67,7 +67,18 @@ def ciclo_gui(interfaz):
         return
 
     print("Identificación mediante interfaz gráfica.")
-    datos = interfaz.pedir_identificacion()
+
+    # Activar la lectura de botones durante la identificación.
+    gpio_handler.iniciar_lectura_botones(
+        interfaz.registrar_boton_fisico
+    )
+
+    try:
+        datos = interfaz.pedir_identificacion()
+    finally:
+        # Detener la lectura al validar, cancelar, agotar el tiempo
+        # de inactividad o cerrar la ventana.
+        gpio_handler.detener_lectura_botones()
 
     if datos is None:
         print("Identificación cancelada o sin actividad. Volviendo a reposo.")

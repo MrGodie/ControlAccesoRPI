@@ -6,6 +6,7 @@ No contiene lógica de validación.
 """
 
 import time
+import threading
 import RPi.GPIO as GPIO
 
 from config import (
@@ -14,6 +15,8 @@ from config import (
 )
 
 pwm_servo = None  # se crea en inicializar()
+_hilo_botones = None
+_detener_botones = None
 
 
 def inicializar():
@@ -132,10 +135,78 @@ def esperar_botones(longitud_esperada):
 
     return secuencia
 
+def iniciar_lectura_botones(callback):
+    """
+    Inicia la lectura de botones en un hilo secundario.
+
+    Cada pulsación genera callback(numero).
+    El callback no debe modificar directamente widgets Tkinter.
+    """
+    global _hilo_botones, _detener_botones
+
+    detener_lectura_botones()
+
+    evento_detener = threading.Event()
+    _detener_botones = evento_detener
+
+    def monitorizar():
+        while not evento_detener.is_set():
+            detectado = False
+
+            for numero, pin in BOTONES.items():
+                if evento_detener.is_set():
+                    break
+
+                if GPIO.input(pin) == GPIO.LOW:
+                    # Notificar una única vez por pulsación.
+                    callback(numero)
+                    detectado = True
+
+                    # Esperar la liberación sin bloquear la GUI.
+                    while (
+                        GPIO.input(pin) == GPIO.LOW
+                        and not evento_detener.wait(0.01)
+                    ):
+                        pass
+
+                    if evento_detener.wait(TIEMPO_DEBOUNCE):
+                        break
+
+                    # Procesar una pulsación por iteración.
+                    break
+
+            if not detectado:
+                evento_detener.wait(0.01)
+
+    _hilo_botones = threading.Thread(
+        target=monitorizar,
+        name="LecturaBotonesGPIO",
+        daemon=True
+    )
+    _hilo_botones.start()
+
+
+def detener_lectura_botones():
+    """Detiene la lectura de botones en segundo plano."""
+    global _hilo_botones, _detener_botones
+
+    if _detener_botones is not None:
+        _detener_botones.set()
+
+    if _hilo_botones is not None:
+        if _hilo_botones is not threading.current_thread():
+            _hilo_botones.join(timeout=1)
+
+    _hilo_botones = None
+    _detener_botones = None
 
 def limpiar():
+    detener_lectura_botones()
+
     print("\nLimpiando GPIO...")
-    if pwm_servo:
+
+    if pwm_servo is not None:
         pwm_servo.stop()
+
     GPIO.cleanup()
     print("Programa terminado")

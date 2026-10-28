@@ -59,6 +59,39 @@ class InterfazAcceso:
     def mostrar_reposo(self):
         self._enviar(self._ui_reposo)
 
+    def _ui_boton_fisico(self, numero):
+        """
+        Añade una pulsación física al campo de clave.
+        Se ejecuta exclusivamente en el hilo principal de Tkinter.
+        """
+        if not self._activa:
+            return
+
+        # La pantalla de identificación debe estar activa.
+        if self._entrada_clave is None:
+            return
+
+        # Ignorar números que no correspondan a botones configurados.
+        if numero not in BOTONES:
+            return
+
+        texto_actual = self._entrada_clave.get()
+
+        # No permitir más dígitos que la longitud de la clave.
+        if len(texto_actual) >= LONGITUD_CLAVE:
+            return
+
+        self._entrada_clave.insert(tk.END, str(numero))
+        self._reiniciar_inactividad()
+
+
+    def registrar_boton_fisico(self, numero):
+            """
+            Recibe una pulsación desde el hilo GPIO.
+            La modificación del campo se ejecuta en el hilo de Tkinter.
+            """
+            self._enviar(self._ui_boton_fisico, numero)
+
     def pedir_identificacion(self):
         """
         Muestra la pantalla de identificación y espera al usuario.
@@ -84,6 +117,32 @@ class InterfazAcceso:
         """Bucle de la ventana; bloquea el hilo principal hasta cerrarla."""
         self.raiz.after(50, self._procesar_ordenes)
         self.raiz.mainloop()
+
+    def _ui_boton_fisico(self, numero):
+        """
+        Añade una pulsación física al campo de clave.
+        Se ejecuta exclusivamente en el hilo principal de Tkinter.
+        """
+        if not self._activa:
+            return
+
+        # La pantalla de identificación debe estar activa.
+        if self._entrada_clave is None:
+            return
+
+        # Ignorar números que no correspondan a botones configurados.
+        if numero not in BOTONES:
+            return
+
+        texto_actual = self._entrada_clave.get()
+
+        # No permitir más dígitos que la longitud de la clave.
+        if len(texto_actual) >= LONGITUD_CLAVE:
+            return
+
+        self._entrada_clave.insert(tk.END, str(numero))
+        self._reiniciar_inactividad()
+
 
     # ------------------------- construcción base --------------------------
 
