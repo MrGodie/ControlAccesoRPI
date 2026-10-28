@@ -20,6 +20,7 @@ import traceback
 from config import (
     LONGITUD_CLAVE,
     RECONOCIMIENTO_ACTIVO,
+    ROL_ADMINISTRADOR,
     TIEMPO_ESPERA_PRESENCIA,
     TIEMPO_PANTALLA_AUTORIZADO,
     TIEMPO_PANTALLA_DENEGADO,
@@ -28,6 +29,7 @@ from config import (
     TIEMPO_PANTALLA_PREPARANDO,
 )
 import camera
+import enrollment
 import face
 import gpio_handler
 import validator
@@ -130,6 +132,33 @@ def intento_facial(interfaz):
     return validator.verificar_rostro(usuario_id)
 
 
+def es_administrador(usuario):
+    """True si el usuario autorizado puede dar de alta a otros."""
+    return bool(usuario) and usuario.get("rol") == ROL_ADMINISTRADOR
+
+
+def sesion_administracion(interfaz, usuario):
+    """
+    Menú del administrador tras una identificación autorizada.
+    Se mantiene abierto hasta que elige salir, se va sin responder o
+    cierra la ventana.
+    """
+    print(f"Modo administración: {usuario['nombre']}")
+
+    while True:
+        opcion = interfaz.preguntar_menu_admin(usuario["nombre"])
+        if opcion != "nuevo":        # "salir", None por inactividad o cierre
+            print("Saliendo del modo administración.")
+            return
+
+        resultado = enrollment.enrolar(interfaz)
+        print("Enrolamiento:", resultado)
+        if resultado != enrollment.OTRO:
+            # Cualquier otro final vuelve al menú, no a reposo: el
+            # administrador decide ahí si sigue o se sale.
+            continue
+
+
 def ciclo_gui(interfaz):
     """Un ciclo de acceso con interfaz gráfica (reposo -> resultado -> reposo)."""
     interfaz.mostrar_reposo()
@@ -147,6 +176,8 @@ def ciclo_gui(interfaz):
             interfaz.mostrar_resultado(resultado, usuario)
             procesar_resultado(usuario, resultado, "facial")
             _mantener_pantalla(inicio, resultado)
+            if resultado == "autorizado" and es_administrador(usuario):
+                sesion_administracion(interfaz, usuario)
             interfaz.mostrar_reposo()
             gpio_handler.esperar_fin_presencia()
             print("Esperando un nuevo intento...")
@@ -182,6 +213,11 @@ def ciclo_gui(interfaz):
     interfaz.mostrar_resultado(resultado, usuario)
     procesar_resultado(usuario, resultado, "gui")
     _mantener_pantalla(inicio, resultado)
+
+    # El administrador entra al alta de usuarios desde aquí, después de
+    # identificarse con su código y clave.
+    if resultado == "autorizado" and es_administrador(usuario):
+        sesion_administracion(interfaz, usuario)
 
     interfaz.mostrar_reposo()
     gpio_handler.esperar_fin_presencia()
