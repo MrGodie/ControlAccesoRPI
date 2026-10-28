@@ -62,3 +62,26 @@ CAMARA_INTENTOS_CAPTURA = 10         # frames tried to obtain one valid sample
 CALIDAD_BRILLO_MIN = 40              # mean gray level (0-255) below this = too dark
 CALIDAD_BRILLO_MAX = 220             # above this = too bright
 CALIDAD_NITIDEZ_MIN = 60             # variance of the Laplacian below this = blurry
+
+# --- Reconocimiento facial (DeepFace, local) ---
+# Activa o desactiva el intento facial sin tocar el código.
+RECONOCIMIENTO_ACTIVO = True
+
+# SFace y GhostFaceNet son los ligeros; VGG-Face (el default de DeepFace)
+# es demasiado pesado para la Raspberry.
+RECONOCIMIENTO_MODELO = "SFace"
+
+# opencv es el detector más ligero; retinaface y mtcnn son mucho más lentos.
+RECONOCIMIENTO_DETECTOR = "opencv"
+
+# Distancia coseno máxima para considerar que dos rostros son la misma
+# persona. Más bajo = más estricto. 0.593 es el umbral que DeepFace usa
+# para SFace con coseno; calibrar con rostros reales del equipo.
+RECONOCIMIENTO_UMBRAL = 0.593
+
+# Fotogramas válidos que se intentan antes de darse por vencido.
+RECONOCIMIENTO_INTENTOS = 3
+
+# --- Pantallas del flujo facial ---
+TIEMPO_PANTALLA_PREPARANDO = 2    # "Colóquese frente a la cámara"
+TIEMPO_PANTALLA_FALLO_CAMARA = 4  # "La cámara no responde"

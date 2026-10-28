@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Interfaz gráfica del control de acceso (wireframes PI2, monitor 1280x720).
+Interfaz gráfica del control de acceso (wireframes PI2 y PI3, monitor 1280x720).
 
 Tkinter no es seguro entre hilos: la ventana corre en el hilo principal
 (ejecutar) y el controlador, en un hilo de trabajo, le envía órdenes por
-una cola. La GUI no consulta la base de datos: solo muestra pantallas y
-entrega lo que el usuario escribió.
+una cola. La GUI no consulta la base de datos ni reconoce rostros: solo
+muestra pantallas y entrega lo que el usuario escribió.
 """
 
 import os
@@ -38,6 +38,7 @@ FUENTE_CAJA = ("Helvetica", 18)
 FUENTE_ETIQUETA = ("Helvetica", 12)
 FUENTE_CAMPO = ("Helvetica", 22)
 FUENTE_BOTON = ("Helvetica", 16, "bold")
+FUENTE_MARCADOR = ("Helvetica", 14)
 
 
 def gui_disponible():
@@ -59,38 +60,30 @@ class InterfazAcceso:
     def mostrar_reposo(self):
         self._enviar(self._ui_reposo)
 
-    def _ui_boton_fisico(self, numero):
-        """
-        Añade una pulsación física al campo de clave.
-        Se ejecuta exclusivamente en el hilo principal de Tkinter.
-        """
-        if not self._activa:
-            return
+    def mostrar_preparando(self):
+        """Pantalla 02: pide a la persona colocarse frente a la cámara."""
+        self._enviar(self._ui_preparando)
 
-        # La pantalla de identificación debe estar activa.
-        if self._entrada_clave is None:
-            return
+    def mostrar_identificando(self):
+        """Pantalla 03: el reconocimiento facial está corriendo."""
+        self._enviar(self._ui_identificando)
 
-        # Ignorar números que no correspondan a botones configurados.
-        if numero not in BOTONES:
-            return
+    def mostrar_fallo_camara(self, detalle=None):
+        """Pantalla 07: fallo técnico de cámara, que no es un rechazo."""
+        self._enviar(self._ui_fallo_camara, detalle)
 
-        texto_actual = self._entrada_clave.get()
+    def mostrar_validando(self):
+        self._enviar(self._ui_validando)
 
-        # No permitir más dígitos que la longitud de la clave.
-        if len(texto_actual) >= LONGITUD_CLAVE:
-            return
-
-        self._entrada_clave.insert(tk.END, str(numero))
-        self._reiniciar_inactividad()
-
+    def mostrar_resultado(self, resultado, usuario):
+        self._enviar(self._ui_resultado, resultado, usuario)
 
     def registrar_boton_fisico(self, numero):
-            """
-            Recibe una pulsación desde el hilo GPIO.
-            La modificación del campo se ejecuta en el hilo de Tkinter.
-            """
-            self._enviar(self._ui_boton_fisico, numero)
+        """
+        Recibe una pulsación desde el hilo GPIO.
+        La modificación del campo se ejecuta en el hilo de Tkinter.
+        """
+        self._enviar(self._ui_boton_fisico, numero)
 
     def pedir_identificacion(self):
         """
@@ -104,12 +97,6 @@ class InterfazAcceso:
         self._enviar(self._ui_identificacion)
         return self._respuestas.get()
 
-    def mostrar_validando(self):
-        self._enviar(self._ui_validando)
-
-    def mostrar_resultado(self, resultado, usuario):
-        self._enviar(self._ui_resultado, resultado, usuario)
-
     def cerrar(self):
         self._enviar(self._destruir)
 
@@ -118,32 +105,6 @@ class InterfazAcceso:
         self.raiz.after(50, self._procesar_ordenes)
         self.raiz.mainloop()
 
-    def _ui_boton_fisico(self, numero):
-        """
-        Añade una pulsación física al campo de clave.
-        Se ejecuta exclusivamente en el hilo principal de Tkinter.
-        """
-        if not self._activa:
-            return
-
-        # La pantalla de identificación debe estar activa.
-        if self._entrada_clave is None:
-            return
-
-        # Ignorar números que no correspondan a botones configurados.
-        if numero not in BOTONES:
-            return
-
-        texto_actual = self._entrada_clave.get()
-
-        # No permitir más dígitos que la longitud de la clave.
-        if len(texto_actual) >= LONGITUD_CLAVE:
-            return
-
-        self._entrada_clave.insert(tk.END, str(numero))
-        self._reiniciar_inactividad()
-
-
     # ------------------------- construcción base --------------------------
 
     def __init__(self):
@@ -151,6 +112,12 @@ class InterfazAcceso:
         self._respuestas = queue.Queue()   # ventana -> controlador
         self._activa = True
         self._temporizador = None
+
+        # Widgets de la pantalla de identificación. Existen solo mientras
+        # esa pantalla está montada; fuera de ella valen None.
+        self._entrada_id = None
+        self._entrada_clave = None
+        self._mensaje = None
 
         self.raiz = tk.Tk()
         self.raiz.title("Control de Acceso")
@@ -203,6 +170,12 @@ class InterfazAcceso:
         self._detener_inactividad()
         for widget in self._contenido.winfo_children():
             widget.destroy()
+        # Los widgets de identificación acaban de ser destruidos: hay que
+        # soltar las referencias o una pulsación encolada los tocaría ya
+        # muertos y reventaría con TclError.
+        self._entrada_id = None
+        self._entrada_clave = None
+        self._mensaje = None
         self._estado.config(text=f"ESTADO: {estado}")
         bloque = tk.Frame(self._contenido, bg=FONDO)
         bloque.pack(expand=True, fill="x")
@@ -225,11 +198,53 @@ class InterfazAcceso:
             anchor="w", padx=14, pady=10,
         ).pack(fill="x", pady=(0, 10))
 
+    @staticmethod
+    def _marcador_camara(bloque, texto):
+        """
+        Recuadro que ocupa el lugar del preview de la cámara. El video en
+        vivo no se dibuja aquí: la GUI no toca la cámara, y mostrarlo
+        exigiría PIL/ImageTk además de copiar cada fotograma al hilo de
+        Tkinter. Queda como marcador, igual que en el wireframe.
+        """
+        marco = tk.Frame(bloque, bg=FONDO, highlightbackground=BORDE,
+                         highlightthickness=2, height=180)
+        marco.pack(fill="x", pady=(0, 16))
+        marco.pack_propagate(False)
+        tk.Label(
+            marco, text=texto, font=FUENTE_MARCADOR, bg=FONDO, fg=GRIS,
+        ).pack(expand=True)
+
+    @staticmethod
+    def _vinetas(bloque, lineas):
+        for linea in lineas:
+            tk.Label(
+                bloque, text=f"·  {linea}", font=FUENTE_ETIQUETA,
+                bg=FONDO, fg=TEXTO, anchor="w",
+            ).pack(fill="x", pady=2)
+
     # ----------------------------- pantallas ------------------------------
 
     def _ui_reposo(self):
         bloque = self._nueva_pantalla("REPOSO")
         self._titulo(bloque, TEXTO_REPOSO, anchor="center")
+
+    def _ui_preparando(self):
+        bloque = self._nueva_pantalla("PREPARANDO")
+        self._titulo(bloque, "Colóquese frente a la cámara")
+        self._marcador_camara(bloque, "INICIANDO CÁMARA")
+        self._vinetas(bloque, [
+            "Mire al frente, a unos 50 cm",
+            "Retire gorra o lentes oscuros",
+            "La identificación es automática",
+        ])
+
+    def _ui_identificando(self):
+        bloque = self._nueva_pantalla("IDENTIFICANDO")
+        self._titulo(bloque, "Identificando…")
+        self._marcador_camara(bloque, "ROSTRO DETECTADO")
+        barra = ttk.Progressbar(bloque, mode="indeterminate", length=420)
+        barra.pack(anchor="w")
+        barra.start(12)
 
     def _ui_validando(self):
         bloque = self._nueva_pantalla("VALIDANDO")
@@ -238,6 +253,13 @@ class InterfazAcceso:
         barra.pack()
         barra.start(12)
 
+    def _ui_fallo_camara(self, detalle=None):
+        bloque = self._nueva_pantalla("FALLO DEL SISTEMA")
+        self._titulo(bloque, "NO SE PUDO COMPLETAR",
+                     detalle or "La cámara no responde")
+        self._caja(bloque, "Esto NO es un acceso denegado")
+        self._caja(bloque, "Identifíquese con su código y clave")
+
     def _ui_resultado(self, resultado, usuario):
         if resultado == "autorizado":
             bloque = self._nueva_pantalla("AUTORIZADO")
@@ -245,6 +267,11 @@ class InterfazAcceso:
         elif resultado == "denegado_sin_permiso":
             bloque = self._nueva_pantalla("DENEGADO")
             self._titulo(bloque, "ACCESO DENEGADO", self._nombre_y_rol(usuario))
+            self._caja(bloque, "El rol no tiene permiso en este punto de acceso")
+        elif resultado == "denegado_rostro_desconocido":
+            bloque = self._nueva_pantalla("DENEGADO")
+            self._titulo(bloque, "ACCESO DENEGADO", "Rostro no reconocido")
+            self._caja(bloque, "El rostro no coincide con ningún usuario dado de alta")
         elif resultado == "denegado_no_reconocido":
             bloque = self._nueva_pantalla("DENEGADO")
             self._titulo(bloque, "ACCESO DENEGADO", "No fue posible verificar la identidad")
@@ -268,7 +295,6 @@ class InterfazAcceso:
         self._entrada_id = tk.Entry(bloque, font=FUENTE_CAMPO, relief="solid", bd=1)
         self._entrada_id.pack(fill="x", ipady=6, pady=(2, 14))
 
-        self._entrada_clave = None
         if GUI_REQUIERE_CLAVE:
             self._campo_etiqueta(bloque, "CLAVE")
             self._entrada_clave = tk.Entry(
@@ -303,6 +329,36 @@ class InterfazAcceso:
     def _campo_etiqueta(bloque, texto):
         tk.Label(bloque, text=texto, font=FUENTE_ETIQUETA, bg=FONDO, fg=GRIS).pack(anchor="w")
 
+    def _ui_boton_fisico(self, numero):
+        """
+        Añade una pulsación física al campo de clave.
+        Se ejecuta exclusivamente en el hilo principal de Tkinter.
+        """
+        if not self._activa:
+            return
+
+        # La pantalla de identificación debe estar activa.
+        if self._entrada_clave is None:
+            return
+
+        # Ignorar números que no correspondan a botones configurados.
+        if numero not in BOTONES:
+            return
+
+        try:
+            texto_actual = self._entrada_clave.get()
+        except tk.TclError:
+            # El widget se destruyó entre que se encoló la orden y ahora.
+            self._entrada_clave = None
+            return
+
+        # No permitir más dígitos que la longitud de la clave.
+        if len(texto_actual) >= LONGITUD_CLAVE:
+            return
+
+        self._entrada_clave.insert(tk.END, str(numero))
+        self._reiniciar_inactividad()
+
     def _tras_id(self, _evento=None):
         if self._entrada_clave is not None:
             self._entrada_clave.focus_set()
@@ -310,6 +366,9 @@ class InterfazAcceso:
             self._enviar_identificacion()
 
     def _enviar_identificacion(self):
+        if self._entrada_id is None:
+            return
+
         texto_id = self._entrada_id.get().strip()
         if not (texto_id.isascii() and texto_id.isdigit()) or len(texto_id) > GUI_ID_MAX_DIGITOS:
             self._mensaje.config(text=f"Ingresa tu ID (solo dígitos, máximo {GUI_ID_MAX_DIGITOS})")

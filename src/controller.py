@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Punto de entrada del sistema. Orquesta GPIO, GUI, validación,
-salida y registro, sin contener lógica propia de ninguno.
+Punto de entrada del sistema. Orquesta GPIO, cámara, reconocimiento,
+GUI, validación, salida y registro, sin contener lógica propia de
+ninguno.
 
 Con interfaz gráfica, la ventana corre en el hilo principal y el ciclo
 de acceso en un hilo de trabajo. Sin pantalla, el ciclo corre en el
 hilo principal usando los botones físicos.
+
+Orden de identificación: primero el rostro; si no hay cámara, no se
+detecta rostro o DeepFace no está instalado, se cae a código y clave.
 """
 
 import threading
@@ -15,12 +19,16 @@ import traceback
 
 from config import (
     LONGITUD_CLAVE,
+    RECONOCIMIENTO_ACTIVO,
     TIEMPO_ESPERA_PRESENCIA,
     TIEMPO_PANTALLA_AUTORIZADO,
     TIEMPO_PANTALLA_DENEGADO,
     TIEMPO_PANTALLA_FALLO,
+    TIEMPO_PANTALLA_FALLO_CAMARA,
+    TIEMPO_PANTALLA_PREPARANDO,
 )
 import camera
+import face
 import gpio_handler
 import validator
 import exit
@@ -32,14 +40,18 @@ DURACION_PANTALLA = {
     "autorizado": TIEMPO_PANTALLA_AUTORIZADO,
     "denegado_sin_permiso": TIEMPO_PANTALLA_DENEGADO,
     "denegado_no_reconocido": TIEMPO_PANTALLA_DENEGADO,
+    "denegado_rostro_desconocido": TIEMPO_PANTALLA_DENEGADO,
     "error_sistema": TIEMPO_PANTALLA_FALLO,
 }
+
+# Se resuelve en main(): la cámara puede no estar presente.
+_camara_disponible = False
 
 
 def procesar_resultado(usuario, resultado, metodo):
     """
     Reacciona al resultado de validación y registra el intento,
-    sin importar si vino de la GUI o de los botones físicos.
+    sin importar si vino del rostro, de la GUI o de los botones físicos.
     """
     if resultado == "autorizado":
         gpio_handler.indicar_exito()
@@ -47,7 +59,7 @@ def procesar_resultado(usuario, resultado, metodo):
         exit.activar_actuador()
     elif resultado == "error_sistema":
         gpio_handler.indicar_error_sistema()
-    else:  # denegado_sin_permiso / denegado_no_reconocido
+    else:  # cualquier denegado
         gpio_handler.indicar_error()
 
     db.registrar_intento(
@@ -55,6 +67,67 @@ def procesar_resultado(usuario, resultado, metodo):
         metodo=metodo,
         resultado=resultado
     )
+
+
+def _mantener_pantalla(inicio, resultado):
+    """
+    La pantalla de resultado se mantiene su tiempo completo, contando
+    lo que tardaron el audio, el actuador y el registro.
+    """
+    restante = DURACION_PANTALLA[resultado] - (time.monotonic() - inicio)
+    if restante > 0:
+        time.sleep(restante)
+
+
+def intento_facial(interfaz):
+    """
+    Intenta identificar por rostro.
+
+    Devuelve (usuario, resultado) cuando hubo un intento de acceso real,
+    o (None, None) cuando no se pudo intentar y hay que caer a la
+    identificación manual (sin cámara, sin rostro, sin DeepFace o sin
+    poder leer las plantillas).
+    """
+    interfaz.mostrar_preparando()
+    time.sleep(TIEMPO_PANTALLA_PREPARANDO)
+
+    try:
+        with camera.sesion_camara():
+            interfaz.mostrar_identificando()
+            usuario_id, distancia, motivo = face.identificar(
+                camera.capturar_muestra_valida
+            )
+    except camera.CamaraError as error:
+        # Un fallo técnico NO es un acceso denegado (NFR-04): se avisa
+        # aparte y la persona sigue por código y clave.
+        print("Fallo de cámara:", error)
+        interfaz.mostrar_fallo_camara("La cámara no responde")
+        time.sleep(TIEMPO_PANTALLA_FALLO_CAMARA)
+        return None, None
+
+    if motivo == face.NO_DISPONIBLE:
+        print("DeepFace no está instalado: se usa identificación manual.")
+        return None, None
+
+    if motivo == face.ERROR_BD:
+        print("No se pudieron leer las plantillas biométricas.")
+        interfaz.mostrar_fallo_camara("Sin conexión con la base de datos")
+        time.sleep(TIEMPO_PANTALLA_FALLO_CAMARA)
+        return None, None
+
+    if motivo == face.SIN_ROSTRO:
+        print("No se detectó ningún rostro.")
+        interfaz.mostrar_fallo_camara("No se detectó ningún rostro")
+        time.sleep(TIEMPO_PANTALLA_FALLO_CAMARA)
+        return None, None
+
+    if motivo == face.DESCONOCIDO:
+        cerca = f" (distancia {distancia:.4f})" if distancia is not None else ""
+        print("Rostro no reconocido" + cerca)
+        return None, "denegado_rostro_desconocido"
+
+    print(f"Rostro reconocido: usuario {usuario_id} (distancia {distancia:.4f})")
+    return validator.verificar_rostro(usuario_id)
 
 
 def ciclo_gui(interfaz):
@@ -66,6 +139,21 @@ def ciclo_gui(interfaz):
         print("Sin presencia detectada, reiniciando espera...")
         return
 
+    # ---------------------------- rostro ------------------------------
+    if RECONOCIMIENTO_ACTIVO and _camara_disponible and face.disponible():
+        usuario, resultado = intento_facial(interfaz)
+        if resultado is not None:
+            inicio = time.monotonic()
+            interfaz.mostrar_resultado(resultado, usuario)
+            procesar_resultado(usuario, resultado, "facial")
+            _mantener_pantalla(inicio, resultado)
+            interfaz.mostrar_reposo()
+            gpio_handler.esperar_fin_presencia()
+            print("Esperando un nuevo intento...")
+            time.sleep(1)
+            return
+
+    # ------------------- código y clave (alternativa) -------------------
     print("Identificación mediante interfaz gráfica.")
 
     # Activar la lectura de botones durante la identificación.
@@ -93,12 +181,7 @@ def ciclo_gui(interfaz):
     inicio = time.monotonic()
     interfaz.mostrar_resultado(resultado, usuario)
     procesar_resultado(usuario, resultado, "gui")
-
-    # La pantalla de resultado se mantiene su tiempo completo, contando
-    # lo que tardaron el audio, el actuador y el registro.
-    restante = DURACION_PANTALLA[resultado] - (time.monotonic() - inicio)
-    if restante > 0:
-        time.sleep(restante)
+    _mantener_pantalla(inicio, resultado)
 
     interfaz.mostrar_reposo()
     gpio_handler.esperar_fin_presencia()
@@ -144,16 +227,29 @@ def _hilo_de_trabajo(interfaz, detener):
 
 
 def main():
+    global _camara_disponible
+
     detener = threading.Event()
     try:
         gpio_handler.inicializar()
         print("Sistema de acceso iniciado.")
 
         # La cámara es opcional: si falla, la GUI y los botones siguen activos
-        camara_ok, mensaje_camara = camera.verificar_camara()
+        _camara_disponible, mensaje_camara = camera.verificar_camara()
         print("Cámara:", mensaje_camara)
-        if not camara_ok:
+
+        if not _camara_disponible:
             print("El reconocimiento facial no estará disponible.")
+        elif not face.disponible():
+            print("DeepFace no está instalado: el reconocimiento facial no estará disponible.")
+        elif not RECONOCIMIENTO_ACTIVO:
+            print("Reconocimiento facial desactivado por configuración.")
+        else:
+            cargadas = face.cargar_plantillas(forzar=True)
+            if cargadas is None:
+                print("No se pudieron leer las plantillas biométricas.")
+            else:
+                print(f"Plantillas biométricas cargadas: {cargadas}")
 
         interfaz = gui.crear_interfaz() if gui.gui_disponible() else None
 
