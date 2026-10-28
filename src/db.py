@@ -96,3 +96,97 @@ def registrar_intento(usuario_id, metodo, resultado):
         if cursor:
             cursor.close()
         conexion.close()
+
+def obtener_roles():
+    """
+    Devuelve [{id, nombre, descripcion, acceso_permitido}] para llenar el
+    selector de rol del alta. "ERROR_CONEXION" si la base de datos falla.
+    """
+    try:
+        conexion = conectar()
+    except Error as e:
+        print("Error de conexión a BD:", e)
+        return "ERROR_CONEXION"
+
+    cursor = None
+    try:
+        cursor = conexion.cursor(dictionary=True)
+        cursor.execute(
+            "SELECT id, nombre, descripcion, acceso_permitido "
+            "FROM roles ORDER BY nombre"
+        )
+        return cursor.fetchall()
+    except Error as e:
+        print("Error al leer los roles:", e)
+        return "ERROR_CONEXION"
+    finally:
+        if cursor:
+            cursor.close()
+        conexion.close()
+
+
+def crear_usuario(nombre, credencial, rol_id):
+    """
+    Da de alta un usuario. La credencial se guarda hasheada con SHA2,
+    igual que la compara _SELECT_USUARIO.
+
+    Devuelve el id del usuario nuevo, "CLAVE_DUPLICADA" si esa clave ya
+    la tiene alguien (credencial_hash es UNIQUE) o "ERROR_CONEXION".
+    """
+    try:
+        conexion = conectar()
+    except Error as e:
+        print("No se pudo crear el usuario (fallo de conexión):", e)
+        return "ERROR_CONEXION"
+
+    cursor = None
+    try:
+        cursor = conexion.cursor()
+        cursor.execute(
+            "INSERT INTO usuarios (nombre, credencial_hash, rol_id) "
+            "VALUES (%s, SHA2(%s, 256), %s)",
+            (nombre, credencial, rol_id)
+        )
+        conexion.commit()
+        return cursor.lastrowid
+    except Error as e:
+        # 1062 = Duplicate entry para una clave única.
+        if getattr(e, "errno", None) == 1062:
+            print("La clave ya está en uso por otro usuario.")
+            return "CLAVE_DUPLICADA"
+        print("Error al crear el usuario:", e)
+        return "ERROR_CONEXION"
+    finally:
+        if cursor:
+            cursor.close()
+        conexion.close()
+
+
+def eliminar_usuario(usuario_id):
+    """
+    Borra un usuario. Sus datos biométricos se van con él por el
+    ON DELETE CASCADE de datos_biometricos (FR-14).
+
+    Se usa para deshacer un alta a medias: si el usuario ya se creó y
+    después falla el guardado de las plantillas, no debe quedar un
+    usuario sin rostro que además ocupa una clave.
+    """
+    try:
+        conexion = conectar()
+    except Error as e:
+        print("No se pudo eliminar el usuario (fallo de conexión):", e)
+        return False
+
+    cursor = None
+    try:
+        cursor = conexion.cursor()
+        cursor.execute("DELETE FROM usuarios WHERE id = %s", (usuario_id,))
+        conexion.commit()
+        return True
+    except Error as e:
+        print("Error al eliminar el usuario:", e)
+        return False
+    finally:
+        if cursor:
+            cursor.close()
+        conexion.close()

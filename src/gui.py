@@ -17,6 +17,7 @@ from tkinter import ttk
 from config import (
     BOTONES,
     LONGITUD_CLAVE,
+    ENROLAMIENTO_NOMBRE_MAX,
     GUI_REQUIERE_CLAVE,
     GUI_ID_MAX_DIGITOS,
     GUI_PANTALLA_COMPLETA,
@@ -92,10 +93,52 @@ class InterfazAcceso:
         pasan TIEMPO_INACTIVIDAD_GUI segundos sin actividad o se cierra
         la ventana.
         """
-        while not self._respuestas.empty():
-            self._respuestas.get_nowait()
-        self._enviar(self._ui_identificacion)
-        return self._respuestas.get()
+        return self._preguntar(self._ui_identificacion)
+
+    # ------------------ enrolamiento (modo administración) ---------------
+
+    def preguntar_menu_admin(self, nombre):
+        """Menú del administrador. Devuelve "nuevo" o "salir"."""
+        return self._preguntar(self._ui_menu_admin, nombre)
+
+    def pedir_datos_usuario(self, roles):
+        """
+        Pantalla 01: alta de usuario. `roles` es la lista que devuelve
+        db.obtener_roles(). Devuelve {"nombre", "rol_id", "clave"} o None
+        si se cancela.
+        """
+        return self._preguntar(self._ui_nuevo_usuario, roles)
+
+    def confirmar_captura(self, nombre):
+        """Pantalla 02: preparación. True si se inicia la captura."""
+        return self._preguntar(self._ui_preparar_captura, nombre) == "iniciar"
+
+    def mostrar_captura(self, numero, total):
+        """Pantalla 03: capturando la muestra `numero` de `total`."""
+        self._enviar(self._ui_capturando, numero, total)
+
+    def preguntar_sin_rostro(self, capturadas, total):
+        """Pantalla 04. Devuelve "reintentar" o "cancelar"."""
+        resultado = self._preguntar(self._ui_sin_rostro, capturadas, total)
+        return resultado or "cancelar"
+
+    def confirmar_descarte(self, capturadas, total):
+        """
+        Pantalla 08. True si se descarta el enrolamiento. Si nadie
+        responde y vence la inactividad, se descarta: dejar la captura
+        abierta con la cámara tomada sería peor.
+        """
+        respuesta = self._preguntar(self._ui_descartar, capturadas, total)
+        return respuesta in (None, "descartar")
+
+    def mostrar_generando_plantilla(self, muestras):
+        """Pantalla 06: generando la plantilla."""
+        self._enviar(self._ui_generando, muestras)
+
+    def mostrar_enrolamiento_completo(self, nombre, rol, muestras):
+        """Pantalla 07. Devuelve "otro" o "finalizar"."""
+        resultado = self._preguntar(self._ui_enrolado, nombre, rol, muestras)
+        return resultado or "finalizar"
 
     def cerrar(self):
         self._enviar(self._destruir)
@@ -118,6 +161,12 @@ class InterfazAcceso:
         self._entrada_id = None
         self._entrada_clave = None
         self._mensaje = None
+
+        # Widgets del alta de usuario (pantalla 01 del enrolamiento).
+        self._form_nombre = None
+        self._form_rol = None
+        self._form_clave = None
+        self._roles = []
 
         self.raiz = tk.Tk()
         self.raiz.title("Control de Acceso")
@@ -144,6 +193,21 @@ class InterfazAcceso:
 
     def _enviar(self, funcion, *args):
         self._ordenes.put(lambda: funcion(*args))
+
+    def _preguntar(self, funcion, *args):
+        """
+        Muestra una pantalla que espera respuesta y bloquea al hilo de
+        trabajo hasta que la ventana la entrega. Vacía primero la cola
+        para no leer la respuesta de una pantalla anterior.
+        """
+        while not self._respuestas.empty():
+            self._respuestas.get_nowait()
+        self._enviar(funcion, *args)
+        return self._respuestas.get()
+
+    def _responder(self, valor):
+        self._detener_inactividad()
+        self._respuestas.put(valor)
 
     def _procesar_ordenes(self):
         if not self._activa:
@@ -176,6 +240,9 @@ class InterfazAcceso:
         self._entrada_id = None
         self._entrada_clave = None
         self._mensaje = None
+        self._form_nombre = None
+        self._form_rol = None
+        self._form_clave = None
         self._estado.config(text=f"ESTADO: {estado}")
         bloque = tk.Frame(self._contenido, bg=FONDO)
         bloque.pack(expand=True, fill="x")
@@ -395,6 +462,193 @@ class InterfazAcceso:
     def _cancelar(self):
         self._detener_inactividad()
         self._respuestas.put(None)
+
+    # ================= pantallas de enrolamiento (PI3) ====================
+
+    def _botonera(self, bloque, opciones):
+        """
+        Fila de botones. `opciones` es [(texto, valor, principal)]; al
+        pulsar uno se responde con su valor.
+        """
+        barra = tk.Frame(bloque, bg=FONDO)
+        barra.pack(anchor="w", pady=(14, 0))
+        for texto, valor, principal in opciones:
+            tk.Button(
+                barra, text=texto, font=FUENTE_BOTON,
+                bg=TEXTO if principal else FONDO,
+                fg="#ffffff" if principal else TEXTO,
+                activebackground="#333333" if principal else CAJA,
+                activeforeground="#ffffff" if principal else TEXTO,
+                padx=22, pady=8,
+                command=lambda v=valor: self._responder(v),
+            ).pack(side="left", padx=(0, 12))
+
+    def _ui_menu_admin(self, nombre):
+        bloque = self._nueva_pantalla("ADMINISTRACIÓN")
+        self._titulo(bloque, "Modo administración", f"{nombre} · Administrador")
+        self._botonera(bloque, [
+            ("Nuevo usuario", "nuevo", True),
+            ("Salir", "salir", False),
+        ])
+        self._reiniciar_inactividad()
+
+    # -- 01 Nuevo usuario ---------------------------------------------------
+
+    def _ui_nuevo_usuario(self, roles):
+        bloque = self._nueva_pantalla("DATOS DEL USUARIO")
+        self._titulo(bloque, "Nuevo usuario")
+
+        self._campo_etiqueta(bloque, "NOMBRE COMPLETO")
+        self._form_nombre = tk.Entry(bloque, font=FUENTE_CAMPO, relief="solid", bd=1)
+        self._form_nombre.pack(fill="x", ipady=6, pady=(2, 12))
+
+        self._campo_etiqueta(bloque, "ROL")
+        self._roles = roles
+        self._form_rol = ttk.Combobox(
+            bloque, font=FUENTE_CAMPO, state="readonly",
+            values=[r["nombre"] for r in roles],
+        )
+        self._form_rol.current(0)
+        self._form_rol.pack(fill="x", ipady=4, pady=(2, 12))
+
+        # La clave no está en el wireframe, pero usuarios.credencial_hash
+        # es NOT NULL: sin ella no se puede dar de alta a nadie.
+        self._campo_etiqueta(bloque, f"CLAVE ({LONGITUD_CLAVE} dígitos)")
+        self._form_clave = tk.Entry(
+            bloque, font=FUENTE_CAMPO, show="*", relief="solid", bd=1
+        )
+        self._form_clave.pack(fill="x", ipady=6, pady=(2, 12))
+
+        self._mensaje = tk.Label(bloque, text="", font=FUENTE_ETIQUETA,
+                                 bg=FONDO, fg="#b00020")
+        self._mensaje.pack(anchor="w")
+
+        barra = tk.Frame(bloque, bg=FONDO)
+        barra.pack(anchor="w", pady=(14, 0))
+        tk.Button(
+            barra, text="Continuar", font=FUENTE_BOTON, bg=TEXTO, fg="#ffffff",
+            activebackground="#333333", activeforeground="#ffffff",
+            padx=22, pady=8, command=self._enviar_nuevo_usuario,
+        ).pack(side="left")
+        tk.Button(
+            barra, text="Cancelar", font=FUENTE_BOTON, bg=FONDO, fg=TEXTO,
+            padx=22, pady=8, command=self._cancelar,
+        ).pack(side="left", padx=(12, 0))
+
+        self._form_nombre.focus_set()
+        self._reiniciar_inactividad()
+        self.raiz.bind("<Key>", self._reiniciar_inactividad)
+        self.raiz.bind("<ButtonPress>", self._reiniciar_inactividad)
+
+    def _enviar_nuevo_usuario(self):
+        if self._form_nombre is None:
+            return
+
+        nombre = self._form_nombre.get().strip()
+        if not nombre or len(nombre) > ENROLAMIENTO_NOMBRE_MAX:
+            self._mensaje.config(
+                text=f"Escribe el nombre (máximo {ENROLAMIENTO_NOMBRE_MAX} caracteres)"
+            )
+            self._form_nombre.focus_set()
+            return
+
+        digitos_validos = "".join(str(n) for n in BOTONES)
+        clave = self._form_clave.get()
+        if len(clave) != LONGITUD_CLAVE or any(c not in digitos_validos for c in clave):
+            self._mensaje.config(
+                text=f"La clave son {LONGITUD_CLAVE} dígitos "
+                     f"({digitos_validos[0]}-{digitos_validos[-1]})"
+            )
+            self._form_clave.delete(0, tk.END)
+            self._form_clave.focus_set()
+            return
+
+        rol = self._roles[self._form_rol.current()]
+        self._responder({"nombre": nombre, "rol_id": rol["id"], "clave": clave})
+
+    # -- 02 Preparación -----------------------------------------------------
+
+    def _ui_preparar_captura(self, nombre):
+        bloque = self._nueva_pantalla("PREPARACIÓN")
+        self._titulo(bloque, "Prepare la captura", nombre)
+        self._marcador_camara(bloque, "VISTA PREVIA DE CÁMARA")
+        self._vinetas(bloque, [
+            "1 · Colóquese frente a la cámara, a unos 50 cm",
+            "2 · Mantenga una expresión neutra",
+            "3 · Gire ligeramente la cabeza cuando se le indique",
+        ])
+        self._botonera(bloque, [
+            ("Iniciar captura", "iniciar", True),
+            ("Cancelar", "cancelar", False),
+        ])
+        self._reiniciar_inactividad()
+
+    # -- 03 Capturando ------------------------------------------------------
+
+    def _ui_capturando(self, numero, total):
+        bloque = self._nueva_pantalla("CAPTURANDO")
+        self._titulo(bloque, f"Muestra {numero} de {total}",
+                     "Gire ligeramente la cabeza hacia la derecha")
+        self._marcador_camara(bloque, "ROSTRO DETECTADO")
+        self._campo_etiqueta(bloque, "PROGRESO")
+        barra = ttk.Progressbar(bloque, mode="determinate",
+                                maximum=total, value=numero - 1, length=520)
+        barra.pack(anchor="w", pady=(4, 0))
+
+    # -- 04 Sin rostro ------------------------------------------------------
+
+    def _ui_sin_rostro(self, capturadas, total):
+        bloque = self._nueva_pantalla("SIN ROSTRO")
+        self._titulo(bloque, "NO SE DETECTA NINGÚN ROSTRO", "La captura está en pausa")
+        self._marcador_camara(bloque, "SIN ROSTRO EN CUADRO")
+        self._vinetas(bloque, [
+            "Acérquese y centre el rostro en el recuadro",
+            "Verifique que haya luz suficiente",
+            f"Muestras válidas hasta ahora: {capturadas} de {total}",
+        ])
+        self._botonera(bloque, [
+            ("Reintentar", "reintentar", True),
+            ("Cancelar", "cancelar", False),
+        ])
+        self._reiniciar_inactividad()
+
+    # -- 06 Generando plantilla --------------------------------------------
+
+    def _ui_generando(self, muestras):
+        bloque = self._nueva_pantalla("GUARDANDO")
+        self._titulo(bloque, "Generando plantilla…",
+                     f"Procesando las {muestras} muestras en el equipo local")
+        barra = ttk.Progressbar(bloque, mode="indeterminate", length=520)
+        barra.pack(anchor="w", pady=(4, 14))
+        barra.start(12)
+        self._caja(bloque, "Las imágenes capturadas se descartan al terminar")
+
+    # -- 07 Completado ------------------------------------------------------
+
+    def _ui_enrolado(self, nombre, rol, muestras):
+        bloque = self._nueva_pantalla("COMPLETADO")
+        self._titulo(bloque, "ENROLAMIENTO COMPLETADO", f"{nombre} · Rol: {rol}")
+        self._caja(bloque, f"Plantilla creada · {muestras} muestras")
+        self._caja(bloque, "Ya puede identificarse con reconocimiento facial")
+        self._botonera(bloque, [
+            ("Finalizar", "finalizar", True),
+            ("Enrolar otro", "otro", False),
+        ])
+        self._reiniciar_inactividad()
+
+    # -- 08 Descartar -------------------------------------------------------
+
+    def _ui_descartar(self, capturadas, total):
+        bloque = self._nueva_pantalla("CANCELAR")
+        self._titulo(bloque, "¿Descartar el enrolamiento?",
+                     f"Se han capturado {capturadas} de {total} muestras")
+        self._caja(bloque, "Las muestras capturadas se descartan")
+        self._caja(bloque, "El usuario no se dará de alta")
+        self._botonera(bloque, [
+            ("Descartar", "descartar", True),
+            ("Continuar capturando", "continuar", False),
+        ])
+        self._reiniciar_inactividad()
 
     # --------------------------- inactividad ------------------------------
 

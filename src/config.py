@@ -85,3 +85,18 @@ RECONOCIMIENTO_INTENTOS = 3
 # --- Pantallas del flujo facial ---
 TIEMPO_PANTALLA_PREPARANDO = 2    # "Colóquese frente a la cámara"
 TIEMPO_PANTALLA_FALLO_CAMARA = 4  # "La cámara no responde"
+
+# --- Enrolamiento facial (modo administración) ---
+# Nombre del rol que puede dar de alta usuarios. Debe coincidir con el
+# valor de la columna roles.nombre, tal como lo inserta schema.sql.
+ROL_ADMINISTRADOR = "administrador"
+
+# Muestras faciales válidas que se piden por usuario.
+ENROLAMIENTO_MUESTRAS = 5
+
+# Fotogramas que se intentan por muestra antes de avisar que no se
+# detecta ningún rostro.
+ENROLAMIENTO_INTENTOS_POR_MUESTRA = 10
+
+# Largo máximo del nombre; usuarios.nombre es VARCHAR(100).
+ENROLAMIENTO_NOMBRE_MAX = 100
