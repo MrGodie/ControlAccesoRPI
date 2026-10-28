@@ -13,6 +13,7 @@ una imagen: solo el embedding (NFR-08).
 """
 
 import threading
+import time
 
 import numpy as np
 
@@ -38,13 +39,44 @@ DESCONOCIDO = "desconocido"
 NO_DISPONIBLE = "no_disponible"
 ERROR_BD = "error_bd"
 
+# Segundos que se espera a que aparezca un rostro frente a la cámara. El PIR
+# se activa cuando la persona aún camina hacia el equipo: sin esta espera, el
+# primer fotograma casi nunca tiene rostro y siempre se caería a código y clave.
+ESPERA_ROSTRO = 10
+
 _lock = threading.RLock()
 _plantillas = None   # [(usuario_id, vector np.float32)]
+_modelo_ok = None    # None = aún no probado, True = cargado, False = falló
 
 
 def disponible():
-    """True si DeepFace está instalado y se puede reconocer."""
-    return DeepFace is not None
+    """True si DeepFace está instalado y el modelo se pudo cargar."""
+    return DeepFace is not None and _modelo_ok is not False
+
+
+def precargar():
+    """
+    Carga el modelo y el detector ahora, para que el primer reconocimiento
+    real no tarde (y para descubrir pronto si faltan los pesos del modelo).
+    Devuelve (ok, mensaje); nunca lanza.
+    """
+    global _modelo_ok
+    if DeepFace is None:
+        _modelo_ok = False
+        return False, "DeepFace no está instalado"
+    try:
+        en_blanco = np.zeros((224, 224, 3), dtype=np.uint8)
+        DeepFace.represent(
+            img_path=en_blanco,
+            model_name=RECONOCIMIENTO_MODELO,
+            detector_backend=RECONOCIMIENTO_DETECTOR,
+            enforce_detection=False,
+        )
+    except Exception as error:
+        _modelo_ok = False
+        return False, f"No se pudo cargar el modelo {RECONOCIMIENTO_MODELO}: {error}"
+    _modelo_ok = True
+    return True, f"Modelo {RECONOCIMIENTO_MODELO} listo"
 
 
 # --------------------------- serialización -----------------------------
@@ -125,7 +157,14 @@ def obtener_embedding(fotograma):
 
     if not representaciones:
         return None
-    return np.asarray(representaciones[0]["embedding"], dtype=np.float32)
+
+    # Con varios rostros en cuadro se usa el más grande (el más cercano a la
+    # cámara), no el primero que devuelva el detector.
+    principal = max(
+        representaciones,
+        key=lambda r: r["facial_area"]["w"] * r["facial_area"]["h"],
+    )
+    return np.asarray(principal["embedding"], dtype=np.float32)
 
 
 def _distancia_coseno(a, b):
@@ -161,17 +200,20 @@ def comparar(embedding):
     return mejor_id, mejor_distancia
 
 
-def identificar(capturar, intentos=None):
+def identificar(capturar, intentos=None, espera=None):
     """
     Intenta identificar a la persona frente a la cámara.
 
     `capturar` es una función sin argumentos que devuelve
     (fotograma, motivo), tal como camera.capturar_muestra_valida.
+    Espera hasta `espera` segundos (ESPERA_ROSTRO por omisión) a que haya
+    un rostro, y compara hasta `intentos` rostros antes de declararlo
+    desconocido.
 
     Devuelve (usuario_id, distancia, motivo):
       - (id, distancia, None)        rostro reconocido
       - (None, distancia, DESCONOCIDO)  hay rostro pero no coincide
-      - (None, None, SIN_ROSTRO)     no se detectó rostro en ningún intento
+      - (None, None, SIN_ROSTRO)     no apareció ningún rostro a tiempo
       - (None, None, NO_DISPONIBLE)  DeepFace no está instalado
       - (None, None, ERROR_BD)       no se pudieron leer las plantillas
     """
@@ -182,26 +224,29 @@ def identificar(capturar, intentos=None):
         return None, None, ERROR_BD
 
     intentos = intentos or RECONOCIMIENTO_INTENTOS
+    espera = ESPERA_ROSTRO if espera is None else espera
+    limite = time.monotonic() + espera
     mejor_distancia = None
-    hubo_rostro = False
+    comparaciones = 0
 
-    for _ in range(intentos):
+    while comparaciones < intentos and time.monotonic() < limite:
         fotograma, _motivo = capturar()
         if fotograma is None:
+            time.sleep(0.1)
             continue
 
         embedding = obtener_embedding(fotograma)
         if embedding is None:
             continue
 
-        hubo_rostro = True
+        comparaciones += 1
         usuario_id, distancia = comparar(embedding)
         if usuario_id is not None:
             return usuario_id, distancia, None
         if distancia is not None and (mejor_distancia is None or distancia < mejor_distancia):
             mejor_distancia = distancia
 
-    if not hubo_rostro:
+    if comparaciones == 0:
         return None, None, SIN_ROSTRO
     return None, mejor_distancia, DESCONOCIDO
 
@@ -212,8 +257,14 @@ def _probar():
     """Prueba manual: abre la cámara e intenta identificar una vez."""
     import camera
 
-    if not disponible():
+    if DeepFace is None:
         print("DeepFace no está instalado.")
+        return 1
+
+    print("Cargando el modelo (la primera vez descarga los pesos)...")
+    ok, mensaje = precargar()
+    print(mensaje)
+    if not ok:
         return 1
 
     cargadas = cargar_plantillas(forzar=True)
