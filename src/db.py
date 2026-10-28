@@ -28,6 +28,11 @@ def conectar():
 
 
 def _consultar_usuario(condicion, parametros):
+    """
+    Ejecuta la consulta de usuario con la condición dada. Devuelve el
+    diccionario del usuario, None si no existe, o "ERROR_CONEXION" si
+    la base de datos no responde (nunca debe confundirse con un rechazo).
+    """
     try:
         conexion = conectar()
     except Error as e:
