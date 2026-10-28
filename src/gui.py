@@ -11,6 +11,7 @@ muestra pantallas y entrega lo que el usuario escribió.
 
 import os
 import queue
+import traceback
 import tkinter as tk
 from tkinter import ttk
 
@@ -77,6 +78,11 @@ class InterfazAcceso:
         self._enviar(self._ui_validando)
 
     def mostrar_resultado(self, resultado, usuario):
+        """
+        Pantalla de resultado. Con "denegado_rostro_desconocido" incluye los
+        botones "Usar botones" y "Reintentar": el controlador espera la
+        elección con esperar_opcion().
+        """
         self._enviar(self._ui_resultado, resultado, usuario)
 
     def registrar_boton_fisico(self, numero):
@@ -95,27 +101,46 @@ class InterfazAcceso:
         """
         return self._preguntar(self._ui_identificacion)
 
+    def limpiar_respuestas(self):
+        """Descarta pulsaciones viejas antes de mostrar una pantalla con opciones."""
+        while not self._respuestas.empty():
+            try:
+                self._respuestas.get_nowait()
+            except queue.Empty:
+                break
+
+    def esperar_opcion(self, timeout):
+        """
+        Espera la pulsación de un botón de la pantalla actual hasta
+        `timeout` segundos. Devuelve su valor, o None si venció el tiempo.
+        """
+        try:
+            return self._respuestas.get(timeout=timeout)
+        except queue.Empty:
+            return None
+
     # ------------------ enrolamiento (modo administración) ---------------
 
     def preguntar_menu_admin(self, nombre):
         """Menú del administrador. Devuelve "nuevo" o "salir"."""
         return self._preguntar(self._ui_menu_admin, nombre)
 
-    def pedir_datos_usuario(self, roles):
+    def pedir_datos_usuario(self, roles, valores=None, error=None):
         """
         Pantalla 01: alta de usuario. `roles` es la lista que devuelve
-        db.obtener_roles(). Devuelve {"nombre", "rol_id", "clave"} o None
-        si se cancela.
+        db.obtener_roles(). `valores` = (nombre, rol_id) para volver a
+        rellenar el formulario y `error` un mensaje (clave ocupada, etc.).
+        Devuelve {"nombre", "rol_id", "clave"} o None si se cancela.
         """
-        return self._preguntar(self._ui_nuevo_usuario, roles)
+        return self._preguntar(self._ui_nuevo_usuario, roles, valores, error)
 
     def confirmar_captura(self, nombre):
         """Pantalla 02: preparación. True si se inicia la captura."""
         return self._preguntar(self._ui_preparar_captura, nombre) == "iniciar"
 
-    def mostrar_captura(self, numero, total):
+    def mostrar_captura(self, numero, total, instruccion=None):
         """Pantalla 03: capturando la muestra `numero` de `total`."""
-        self._enviar(self._ui_capturando, numero, total)
+        self._enviar(self._ui_capturando, numero, total, instruccion)
 
     def preguntar_sin_rostro(self, capturadas, total):
         """Pantalla 04. Devuelve "reintentar" o "cancelar"."""
@@ -131,13 +156,21 @@ class InterfazAcceso:
         respuesta = self._preguntar(self._ui_descartar, capturadas, total)
         return respuesta in (None, "descartar")
 
+    def mostrar_fallo_enrolamiento(self, detalle, reintentable=True):
+        """
+        Pantalla 05: fallo del enrolamiento. ESPERA al administrador.
+        Devuelve "reintentar" o "salir" (también si vence la inactividad).
+        """
+        resultado = self._preguntar(self._ui_fallo_enrolamiento, detalle, reintentable)
+        return resultado or "salir"
+
     def mostrar_generando_plantilla(self, muestras):
         """Pantalla 06: generando la plantilla."""
         self._enviar(self._ui_generando, muestras)
 
-    def mostrar_enrolamiento_completo(self, nombre, rol, muestras):
+    def mostrar_enrolamiento_completo(self, nombre, rol, muestras, usuario_id=None):
         """Pantalla 07. Devuelve "otro" o "finalizar"."""
-        resultado = self._preguntar(self._ui_enrolado, nombre, rol, muestras)
+        resultado = self._preguntar(self._ui_enrolado, nombre, rol, muestras, usuario_id)
         return resultado or "finalizar"
 
     def cerrar(self):
@@ -191,8 +224,12 @@ class InterfazAcceso:
         self._contenido = tk.Frame(self.raiz, bg=FONDO)
         self._contenido.pack(fill="both", expand=True, padx=80, pady=20)
 
-    def _enviar(self, funcion, *args):
-        self._ordenes.put(lambda: funcion(*args))
+        # Tipografía de la lista desplegable del selector de rol. Si la
+        # versión de Tk no la usa, simplemente se ignora.
+        self.raiz.option_add("*TCombobox*Listbox.font", FUENTE_CAMPO)
+
+    def _enviar(self, funcion, *args, espera_respuesta=False):
+        self._ordenes.put((lambda: funcion(*args), espera_respuesta))
 
     def _preguntar(self, funcion, *args):
         """
@@ -200,9 +237,8 @@ class InterfazAcceso:
         trabajo hasta que la ventana la entrega. Vacía primero la cola
         para no leer la respuesta de una pantalla anterior.
         """
-        while not self._respuestas.empty():
-            self._respuestas.get_nowait()
-        self._enviar(funcion, *args)
+        self.limpiar_respuestas()
+        self._enviar(funcion, *args, espera_respuesta=True)
         return self._respuestas.get()
 
     def _responder(self, valor):
@@ -212,13 +248,22 @@ class InterfazAcceso:
     def _procesar_ordenes(self):
         if not self._activa:
             return
-        try:
-            while True:
-                self._ordenes.get_nowait()()
-        except queue.Empty:
-            pass
-        except Exception as error:  # una pantalla fallida no debe congelar la GUI
-            print("Error en la interfaz gráfica:", error)
+        while True:
+            try:
+                orden, espera_respuesta = self._ordenes.get_nowait()
+            except queue.Empty:
+                break
+            try:
+                orden()
+            except Exception:
+                # Una pantalla fallida no debe congelar el sistema. Si
+                # alguien esperaba su respuesta, se le contesta None
+                # (equivale a cancelar) en lugar de dejarlo bloqueado
+                # para siempre en _respuestas.get().
+                print("Error en la interfaz gráfica:")
+                traceback.print_exc()
+                if espera_respuesta:
+                    self._respuestas.put(None)
         if self._activa:
             self.raiz.after(50, self._procesar_ordenes)
 
@@ -339,6 +384,10 @@ class InterfazAcceso:
             bloque = self._nueva_pantalla("DENEGADO")
             self._titulo(bloque, "ACCESO DENEGADO", "Rostro no reconocido")
             self._caja(bloque, "El rostro no coincide con ningún usuario dado de alta")
+            self._botonera(bloque, [
+                ("Usar botones", "botones", True),
+                ("Reintentar", "reintentar", False),
+            ])
         elif resultado == "denegado_no_reconocido":
             bloque = self._nueva_pantalla("DENEGADO")
             self._titulo(bloque, "ACCESO DENEGADO", "No fue posible verificar la identidad")
@@ -494,21 +543,27 @@ class InterfazAcceso:
 
     # -- 01 Nuevo usuario ---------------------------------------------------
 
-    def _ui_nuevo_usuario(self, roles):
+    def _ui_nuevo_usuario(self, roles, valores=None, error=None):
         bloque = self._nueva_pantalla("DATOS DEL USUARIO")
         self._titulo(bloque, "Nuevo usuario")
+        nombre_previo, rol_previo = valores if valores else ("", None)
 
         self._campo_etiqueta(bloque, "NOMBRE COMPLETO")
         self._form_nombre = tk.Entry(bloque, font=FUENTE_CAMPO, relief="solid", bd=1)
         self._form_nombre.pack(fill="x", ipady=6, pady=(2, 12))
+        self._form_nombre.insert(0, nombre_previo)
 
         self._campo_etiqueta(bloque, "ROL")
         self._roles = roles
+        # Los widgets ttk no aceptan font= como los tk normales: según la
+        # versión de Tk truena con 'unknown option "-font"'. El tamaño de
+        # la lista desplegable se ajusta por la base de opciones.
         self._form_rol = ttk.Combobox(
-            bloque, font=FUENTE_CAMPO, state="readonly",
+            bloque, state="readonly",
             values=[r["nombre"] for r in roles],
         )
-        self._form_rol.current(0)
+        indice = next((i for i, r in enumerate(roles) if r["id"] == rol_previo), 0)
+        self._form_rol.current(indice)
         self._form_rol.pack(fill="x", ipady=4, pady=(2, 12))
 
         # La clave no está en el wireframe, pero usuarios.credencial_hash
@@ -519,7 +574,7 @@ class InterfazAcceso:
         )
         self._form_clave.pack(fill="x", ipady=6, pady=(2, 12))
 
-        self._mensaje = tk.Label(bloque, text="", font=FUENTE_ETIQUETA,
+        self._mensaje = tk.Label(bloque, text=error or "", font=FUENTE_ETIQUETA,
                                  bg=FONDO, fg="#b00020")
         self._mensaje.pack(anchor="w")
 
@@ -585,10 +640,10 @@ class InterfazAcceso:
 
     # -- 03 Capturando ------------------------------------------------------
 
-    def _ui_capturando(self, numero, total):
+    def _ui_capturando(self, numero, total, instruccion=None):
         bloque = self._nueva_pantalla("CAPTURANDO")
         self._titulo(bloque, f"Muestra {numero} de {total}",
-                     "Gire ligeramente la cabeza hacia la derecha")
+                     instruccion or "Mire al frente")
         self._marcador_camara(bloque, "ROSTRO DETECTADO")
         self._campo_etiqueta(bloque, "PROGRESO")
         barra = ttk.Progressbar(bloque, mode="determinate",
@@ -612,6 +667,19 @@ class InterfazAcceso:
         ])
         self._reiniciar_inactividad()
 
+    # -- 05 Fallo del enrolamiento -----------------------------------------
+
+    def _ui_fallo_enrolamiento(self, detalle, reintentable):
+        bloque = self._nueva_pantalla("FALLO DEL SISTEMA")
+        self._titulo(bloque, "NO SE PUDO COMPLETAR", detalle)
+        self._caja(bloque, "Esto NO es un enrolamiento rechazado")
+        self._caja(bloque, "El usuario no se guarda hasta completar la captura")
+        opciones = [("Salir", "salir", not reintentable)]
+        if reintentable:
+            opciones.insert(0, ("Reintentar", "reintentar", True))
+        self._botonera(bloque, opciones)
+        self._reiniciar_inactividad()
+
     # -- 06 Generando plantilla --------------------------------------------
 
     def _ui_generando(self, muestras):
@@ -625,9 +693,11 @@ class InterfazAcceso:
 
     # -- 07 Completado ------------------------------------------------------
 
-    def _ui_enrolado(self, nombre, rol, muestras):
+    def _ui_enrolado(self, nombre, rol, muestras, usuario_id=None):
         bloque = self._nueva_pantalla("COMPLETADO")
         self._titulo(bloque, "ENROLAMIENTO COMPLETADO", f"{nombre} · Rol: {rol}")
+        if usuario_id is not None:
+            self._caja(bloque, f"Código de usuario: {usuario_id}")
         self._caja(bloque, f"Plantilla creada · {muestras} muestras")
         self._caja(bloque, "Ya puede identificarse con reconocimiento facial")
         self._botonera(bloque, [
