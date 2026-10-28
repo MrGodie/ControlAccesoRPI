@@ -46,10 +46,6 @@ DURACION_PANTALLA = {
     "error_sistema": TIEMPO_PANTALLA_FALLO,
 }
 
-# Con rostro desconocido la pantalla ofrece botones ("Usar botones" y
-# "Reintentar"): 4 s no alcanzan para pulsar uno.
-TIEMPO_PANTALLA_OPCIONES = 8
-
 # Se resuelve en main(): la cámara puede no estar presente.
 _camara_disponible = False
 
@@ -83,13 +79,6 @@ def _mantener_pantalla(inicio, resultado):
     restante = DURACION_PANTALLA[resultado] - (time.monotonic() - inicio)
     if restante > 0:
         time.sleep(restante)
-
-
-def _volver_a_reposo(interfaz):
-    interfaz.mostrar_reposo()
-    gpio_handler.esperar_fin_presencia()
-    print("Esperando un nuevo intento...")
-    time.sleep(1)
 
 
 def intento_facial(interfaz):
@@ -148,6 +137,29 @@ def es_administrador(usuario):
     return bool(usuario) and usuario.get("rol") == ROL_ADMINISTRADOR
 
 
+def gestion_usuarios(interfaz):
+    """
+    Pantalla de gestión: lista a los usuarios y desde ahí se da de alta
+    a los nuevos. La lista se vuelve a leer en cada vuelta para que el
+    recién enrolado aparezca de inmediato.
+    """
+    while True:
+        usuarios = db.obtener_usuarios()
+        if usuarios == "ERROR_CONEXION":
+            interfaz.mostrar_fallo("Sin conexión con la base de datos")
+            time.sleep(TIEMPO_PANTALLA_FALLO)
+            return
+
+        accion = interfaz.pedir_gestion_usuarios(usuarios)
+        if accion != "nuevo":        # "volver", None por inactividad o cierre
+            return
+
+        resultado = enrollment.enrolar(interfaz)
+        print("Enrolamiento:", resultado)
+        # Con cualquier final se regresa a la lista: ahí el administrador
+        # ve el resultado y decide si sigue dando de alta.
+
+
 def sesion_administracion(interfaz, usuario):
     """
     Menú del administrador tras una identificación autorizada.
@@ -158,19 +170,11 @@ def sesion_administracion(interfaz, usuario):
 
     while True:
         opcion = interfaz.preguntar_menu_admin(usuario["nombre"])
-        if opcion != "nuevo":        # "salir", None por inactividad o cierre
+        if opcion != "gestion":      # "salir", None por inactividad o cierre
             print("Saliendo del modo administración.")
             return
 
-        resultado = enrollment.enrolar(interfaz)
-        print("Enrolamiento:", resultado)
-
-        # "Enrolar otro" entra directo a un alta nueva, como en el
-        # wireframe. Cualquier otro final vuelve al menú, donde el
-        # administrador decide si sigue o se sale.
-        while resultado == enrollment.OTRO:
-            resultado = enrollment.enrolar(interfaz)
-            print("Enrolamiento:", resultado)
+        gestion_usuarios(interfaz)
 
 
 def ciclo_gui(interfaz):
@@ -184,33 +188,18 @@ def ciclo_gui(interfaz):
 
     # ---------------------------- rostro ------------------------------
     if RECONOCIMIENTO_ACTIVO and _camara_disponible and face.disponible():
-        while True:
-            usuario, resultado = intento_facial(interfaz)
-            if resultado is None:
-                break  # no se pudo intentar: se sigue por código y clave
-
-            interfaz.limpiar_respuestas()
+        usuario, resultado = intento_facial(interfaz)
+        if resultado is not None:
             inicio = time.monotonic()
             interfaz.mostrar_resultado(resultado, usuario)
             procesar_resultado(usuario, resultado, "facial")
-
-            if resultado != "denegado_rostro_desconocido":
-                _mantener_pantalla(inicio, resultado)
-                if resultado == "autorizado" and es_administrador(usuario):
-                    sesion_administracion(interfaz, usuario)
-                _volver_a_reposo(interfaz)
-                return
-
-            # Rostro desconocido: "Usar botones" lleva al código y clave
-            # (el mecanismo alternativo sigue siempre disponible) y
-            # "Reintentar" vuelve a mirar el rostro.
-            restante = max(TIEMPO_PANTALLA_OPCIONES - (time.monotonic() - inicio), 0.5)
-            opcion = interfaz.esperar_opcion(timeout=restante)
-            if opcion == "reintentar":
-                continue
-            if opcion == "botones":
-                break
-            _volver_a_reposo(interfaz)
+            _mantener_pantalla(inicio, resultado)
+            if resultado == "autorizado" and es_administrador(usuario):
+                sesion_administracion(interfaz, usuario)
+            interfaz.mostrar_reposo()
+            gpio_handler.esperar_fin_presencia()
+            print("Esperando un nuevo intento...")
+            time.sleep(1)
             return
 
     # ------------------- código y clave (alternativa) -------------------
@@ -248,7 +237,10 @@ def ciclo_gui(interfaz):
     if resultado == "autorizado" and es_administrador(usuario):
         sesion_administracion(interfaz, usuario)
 
-    _volver_a_reposo(interfaz)
+    interfaz.mostrar_reposo()
+    gpio_handler.esperar_fin_presencia()
+    print("Esperando un nuevo intento...")
+    time.sleep(1)
 
 
 def ciclo_botones():
@@ -273,30 +265,14 @@ def bucle_principal(interfaz, detener):
         print("\n" + "=" * 50)
         print("NUEVO CICLO")
         print("=" * 50)
-        try:
-            if interfaz is not None:
-                ciclo_gui(interfaz)
-            else:
-                ciclo_botones()
-        except Exception:
-            # Un ciclo fallido no debe tumbar el sistema (ni cerrar la
-            # ventana): se registra el error, se libera la cámara y se
-            # vuelve a reposo.
-            traceback.print_exc()
-            camera.liberar_camara()
-            if interfaz is not None:
-                interfaz.mostrar_reposo()
-            time.sleep(1)
+        if interfaz is not None:
+            ciclo_gui(interfaz)
+        else:
+            ciclo_botones()
 
 
 def _hilo_de_trabajo(interfaz, detener):
     try:
-        if RECONOCIMIENTO_ACTIVO and _camara_disponible and face.disponible():
-            # Carga el modelo ahora (la primera vez descarga los pesos) para
-            # que el primer reconocimiento no se quede esperando.
-            interfaz.mostrar_reposo()
-            ok, mensaje = face.precargar()
-            print("Reconocimiento facial:", mensaje)
         bucle_principal(interfaz, detener)
     except Exception:
         traceback.print_exc()

@@ -195,3 +195,38 @@ def eliminar_usuario(usuario_id):
         if cursor:
             cursor.close()
         conexion.close()
+
+def obtener_usuarios():
+    """
+    Lista los usuarios para la pantalla de gestión.
+
+    Devuelve [{id, nombre, rol, muestras}] donde `muestras` es cuántas
+    plantillas faciales tiene cargadas: 0 significa que todavía no está
+    enrolado. "ERROR_CONEXION" si la base de datos falla.
+    """
+    try:
+        conexion = conectar()
+    except Error as e:
+        print("Error de conexión a BD:", e)
+        return "ERROR_CONEXION"
+
+    cursor = None
+    try:
+        cursor = conexion.cursor(dictionary=True)
+        cursor.execute(
+            "SELECT u.id, u.nombre, r.nombre AS rol, "
+            "       COUNT(b.id) AS muestras "
+            "FROM usuarios u "
+            "JOIN roles r ON u.rol_id = r.id "
+            "LEFT JOIN datos_biometricos b ON b.usuario_id = u.id "
+            "GROUP BY u.id, u.nombre, r.nombre "
+            "ORDER BY u.nombre"
+        )
+        return cursor.fetchall()
+    except Error as e:
+        print("Error al listar los usuarios:", e)
+        return "ERROR_CONEXION"
+    finally:
+        if cursor:
+            cursor.close()
+        conexion.close()
