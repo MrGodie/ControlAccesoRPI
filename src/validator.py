@@ -52,3 +52,12 @@ def verificar_usuario(usuario_id, secuencia=None):
     credencial = None if secuencia is None else "".join(map(str, secuencia))
     usuario = _con_limite_de_tiempo(db.obtener_usuario_por_id, usuario_id, credencial)
     return _clasificar(usuario)
+
+def verificar_rostro(usuario_id):
+    """
+    Flujo facial: el rostro ya identificó a la persona, aquí solo se
+    consultan su rol y sus permisos. No se revisa credencial, porque la
+    identidad la dio la biometría.
+    """
+    usuario = _con_limite_de_tiempo(db.obtener_usuario_por_id, usuario_id)
+    return _clasificar(usuario)
