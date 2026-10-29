@@ -63,6 +63,7 @@ def procesar_resultado(usuario, resultado, metodo):
         gpio_handler.indicar_error_sistema()
     else:  # cualquier denegado
         gpio_handler.indicar_error()
+        exit.reproducir_audio_error()
 
     db.registrar_intento(
         usuario_id=usuario["id"] if usuario else None,
