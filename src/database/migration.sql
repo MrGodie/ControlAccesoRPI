@@ -103,3 +103,35 @@ CREATE TABLE IF NOT EXISTS datos_biometricos (
     FOREIGN KEY (usuario_id) REFERENCES usuarios (id)
     ON DELETE CASCADE
 ) ENGINE = InnoDB;
+
+-- -----------------------------------------------------
+-- 8. Permisos de la cuenta de la aplicación (PIC-74).
+-- Requiere una cuenta administradora (sudo mysql), no la
+-- de la aplicación. Es seguro correrla varias veces: GRANT
+-- no duplica permisos que ya existen.
+-- La cuenta 'control_acceso_app'@'localhost' debe existir
+-- antes; esta sección no la crea. Su contraseña no va en
+-- este archivo (NFR-06): vive en las variables de entorno
+-- que lee db.py (DB_USER, DB_PASSWORD).
+-- Permisos mínimos: sin ALL PRIVILEGES. La bitácora
+-- intentos_acceso no lleva UPDATE ni DELETE a propósito:
+-- los registros de acceso no se editan.
+-- -----------------------------------------------------
+
+GRANT SELECT
+  ON control_acceso.roles
+  TO 'control_acceso_app'@'localhost';
+
+GRANT SELECT, INSERT, UPDATE, DELETE
+  ON control_acceso.usuarios
+  TO 'control_acceso_app'@'localhost';
+
+GRANT SELECT, INSERT, UPDATE, DELETE
+  ON control_acceso.datos_biometricos
+  TO 'control_acceso_app'@'localhost';
+
+GRANT SELECT, INSERT
+  ON control_acceso.intentos_acceso
+  TO 'control_acceso_app'@'localhost';
+
+FLUSH PRIVILEGES;
