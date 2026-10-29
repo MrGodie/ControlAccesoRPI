@@ -118,21 +118,41 @@ class InterfazAcceso:
         """Pantalla de fallo técnico genérica (no es un acceso denegado)."""
         self._enviar(self._ui_fallo_camara, detalle)
 
-    def pedir_datos_usuario(self, roles):
+    def mostrar_fallo_enrolamiento(self, detalle, reintentable=True):
+        """
+        Pantalla 05 de la lámina de enrolamiento: fallo técnico durante
+        el alta. Devuelve "reintentar" o "salir".
+
+        Con reintentable=False solo se informa y se sale: no tiene caso
+        ofrecer un reintento cuando la causa no se arregla sola, como
+        que DeepFace no esté instalado.
+        """
+        resultado = self._preguntar(self._ui_fallo_enrolamiento,
+                                    detalle, reintentable)
+        return resultado or "salir"
+
+    def pedir_datos_usuario(self, roles, valores=None, error=None):
         """
         Pantalla 01: alta de usuario. `roles` es la lista que devuelve
         db.obtener_roles(). Devuelve {"nombre", "rol_id", "clave"} o None
         si se cancela.
+
+        `valores` es (nombre, rol_id) de un intento anterior, para no
+        hacer que el administrador los vuelva a escribir, y `error` el
+        mensaje a mostrar en rojo. La clave nunca se reconstruye.
         """
-        return self._preguntar(self._ui_nuevo_usuario, roles)
+        return self._preguntar(self._ui_nuevo_usuario, roles, valores, error)
 
     def confirmar_captura(self, nombre):
         """Pantalla 02: preparación. True si se inicia la captura."""
         return self._preguntar(self._ui_preparar_captura, nombre) == "iniciar"
 
-    def mostrar_captura(self, numero, total):
-        """Pantalla 03: capturando la muestra `numero` de `total`."""
-        self._enviar(self._ui_capturando, numero, total)
+    def mostrar_captura(self, numero, total, instruccion=None):
+        """
+        Pantalla 03: capturando la muestra `numero` de `total`.
+        `instruccion` es la pose que se le pide a la persona.
+        """
+        self._enviar(self._ui_capturando, numero, total, instruccion)
 
     def preguntar_sin_rostro(self, capturadas, total):
         """Pantalla 04. Devuelve "reintentar" o "cancelar"."""
@@ -152,9 +172,10 @@ class InterfazAcceso:
         """Pantalla 06: generando la plantilla."""
         self._enviar(self._ui_generando, muestras)
 
-    def mostrar_enrolamiento_completo(self, nombre, rol, muestras):
+    def mostrar_enrolamiento_completo(self, nombre, rol, muestras, usuario_id=None):
         """Pantalla 07. Devuelve "otro" o "finalizar"."""
-        resultado = self._preguntar(self._ui_enrolado, nombre, rol, muestras)
+        resultado = self._preguntar(self._ui_enrolado, nombre, rol,
+                                    muestras, usuario_id)
         return resultado or "finalizar"
 
     def cerrar(self):
@@ -573,13 +594,15 @@ class InterfazAcceso:
 
     # -- 01 Nuevo usuario ---------------------------------------------------
 
-    def _ui_nuevo_usuario(self, roles):
+    def _ui_nuevo_usuario(self, roles, valores=None, error=None):
         bloque = self._nueva_pantalla("DATOS DEL USUARIO")
         self._titulo(bloque, "Nuevo usuario")
 
         self._campo_etiqueta(bloque, "NOMBRE COMPLETO")
         self._form_nombre = tk.Entry(bloque, font=FUENTE_CAMPO, relief="solid", bd=1)
         self._form_nombre.pack(fill="x", ipady=6, pady=(2, 12))
+        if valores and valores[0]:
+            self._form_nombre.insert(0, valores[0])
 
         self._campo_etiqueta(bloque, "ROL")
         self._roles = roles
@@ -590,7 +613,10 @@ class InterfazAcceso:
             bloque, state="readonly",
             values=[r["nombre"] for r in roles],
         )
-        self._form_rol.current(0)
+        indice = 0
+        if valores and valores[1] is not None:
+            indice = next((i for i, r in enumerate(roles) if r["id"] == valores[1]), 0)
+        self._form_rol.current(indice)
         self._form_rol.pack(fill="x", ipady=4, pady=(2, 12))
 
         # La clave no está en el wireframe, pero usuarios.credencial_hash
@@ -601,7 +627,7 @@ class InterfazAcceso:
         )
         self._form_clave.pack(fill="x", ipady=6, pady=(2, 12))
 
-        self._mensaje = tk.Label(bloque, text="", font=FUENTE_ETIQUETA,
+        self._mensaje = tk.Label(bloque, text=error or "", font=FUENTE_ETIQUETA,
                                  bg=FONDO, fg="#b00020")
         self._mensaje.pack(anchor="w")
 
@@ -667,10 +693,10 @@ class InterfazAcceso:
 
     # -- 03 Capturando ------------------------------------------------------
 
-    def _ui_capturando(self, numero, total):
+    def _ui_capturando(self, numero, total, instruccion=None):
         bloque = self._nueva_pantalla("CAPTURANDO")
         self._titulo(bloque, f"Muestra {numero} de {total}",
-                     "Gire ligeramente la cabeza hacia la derecha")
+                     instruccion or "Mire al frente")
         self._marcador_camara(bloque, "ROSTRO DETECTADO")
         self._campo_etiqueta(bloque, "PROGRESO")
         barra = ttk.Progressbar(bloque, mode="determinate",
@@ -694,6 +720,23 @@ class InterfazAcceso:
         ])
         self._reiniciar_inactividad()
 
+    # -- 05 Fallo durante el enrolamiento ----------------------------------
+
+    def _ui_fallo_enrolamiento(self, detalle, reintentable=True):
+        bloque = self._nueva_pantalla("FALLO DEL SISTEMA")
+        self._titulo(bloque, "NO SE PUDO COMPLETAR", detalle)
+        self._caja(bloque, "Esto NO es un enrolamiento rechazado")
+        if reintentable:
+            self._caja(bloque, "El usuario no se da de alta hasta terminar la captura")
+            self._botonera(bloque, [
+                ("Reintentar", "reintentar", True),
+                ("Salir", "salir", False),
+            ])
+        else:
+            self._caja(bloque, "Revise la instalación antes de volver a intentarlo")
+            self._botonera(bloque, [("Salir", "salir", True)])
+        self._reiniciar_inactividad()
+
     # -- 06 Generando plantilla --------------------------------------------
 
     def _ui_generando(self, muestras):
@@ -707,9 +750,12 @@ class InterfazAcceso:
 
     # -- 07 Completado ------------------------------------------------------
 
-    def _ui_enrolado(self, nombre, rol, muestras):
+    def _ui_enrolado(self, nombre, rol, muestras, usuario_id=None):
         bloque = self._nueva_pantalla("COMPLETADO")
         self._titulo(bloque, "ENROLAMIENTO COMPLETADO", f"{nombre} · Rol: {rol}")
+        if usuario_id is not None:
+            # El ID es el que esa persona teclea en la ruta por botones.
+            self._caja(bloque, f"Código de usuario: {usuario_id}")
         self._caja(bloque, f"Plantilla creada · {muestras} muestras")
         self._caja(bloque, "Ya puede identificarse con reconocimiento facial")
         self._botonera(bloque, [
