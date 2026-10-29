@@ -4,6 +4,8 @@
 Configuración centralizada del sistema.
 Modificar aquí no requiere tocar la lógica de GPIO ni de validación.
 """
+import os
+
 BOCINA = 27
 SERVO = 26
 
@@ -100,3 +102,15 @@ ENROLAMIENTO_INTENTOS_POR_MUESTRA = 10
 
 # Largo máximo del nombre; usuarios.nombre es VARCHAR(100).
 ENROLAMIENTO_NOMBRE_MAX = 100
+
+# --- Audio (bocina USB Jabra Link 370) ---
+# Los .wav viven en sounds/, en la raíz del repositorio. La ruta se arma
+# desde este archivo para que funcione sin importar desde dónde se
+# arranque el programa. setup_audio.sh los puede volver a generar.
+_RAIZ_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+AUDIO_EXITO = os.path.join(_RAIZ_REPO, "sounds", "exito.wav")
+AUDIO_ERROR = os.path.join(_RAIZ_REPO, "sounds", "error.wav")
+
+# Dispositivo ALSA de la bocina, para aplay -D. La Jabra es la tarjeta 3;
+# si cambia (otro USB conectado, reinicio), revisar con `aplay -l`.
+AUDIO_DEVICE = "plughw:3,0"
