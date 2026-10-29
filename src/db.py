@@ -230,3 +230,60 @@ def obtener_usuarios():
         if cursor:
             cursor.close()
         conexion.close()
+
+
+def guardar_biometria(usuario_id, embedding, modelo, tipo="facial"):
+    """Guarda una muestra biométrica (bytes) de un usuario."""
+    try:
+        conexion = conectar()
+    except Error as e:
+        print("No se pudo guardar la biometría (fallo de conexión):", e)
+        return False
+
+    cursor = None
+    try:
+        cursor = conexion.cursor()
+        cursor.execute(
+            "INSERT INTO datos_biometricos (usuario_id, tipo, embedding, modelo) "
+            "VALUES (%s, %s, %s, %s)",
+            (usuario_id, tipo, embedding, modelo)
+        )
+        conexion.commit()
+        return True
+    except Error as e:
+        print("Error al guardar la biometría:", e)
+        return False
+    finally:
+        if cursor:
+            cursor.close()
+        conexion.close()
+
+
+def obtener_biometria(usuario_id=None):
+    """
+    Devuelve una lista de dicts (id, usuario_id, embedding, modelo).
+    Sin usuario_id devuelve todas (para comparar al reconocer).
+    Devuelve "ERROR_CONEXION" si la base de datos falla.
+    """
+    try:
+        conexion = conectar()
+    except Error as e:
+        print("Error de conexión a BD:", e)
+        return "ERROR_CONEXION"
+
+    cursor = None
+    try:
+        cursor = conexion.cursor(dictionary=True)
+        sql = "SELECT id, usuario_id, embedding, modelo FROM datos_biometricos"
+        if usuario_id is None:
+            cursor.execute(sql)
+        else:
+            cursor.execute(sql + " WHERE usuario_id = %s", (usuario_id,))
+        return cursor.fetchall()
+    except Error as e:
+        print("Error al leer la biometría:", e)
+        return "ERROR_CONEXION"
+    finally:
+        if cursor:
+            cursor.close()
+        conexion.close()
