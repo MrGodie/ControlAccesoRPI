@@ -91,7 +91,13 @@ TIEMPO_PANTALLA_FALLO_CAMARA = 4  # "La cámara no responde"
 # --- Enrolamiento facial (modo administración) ---
 # Nombre del rol que puede dar de alta usuarios. Debe coincidir con el
 # valor de la columna roles.nombre, tal como lo inserta schema.sql.
-ROL_ADMINISTRADOR = "administrador"
+# Los permisos NO se deducen del nombre del rol: cada rol declara sus
+# capacidades en la tabla roles (acceso_permitido, puede_gestionar,
+# puede_consultar) y el código pregunta por ellas. Renombrar un rol en
+# la base no debe cambiar lo que puede hacer nadie (PIC-78).
+#
+# Los tres roles son: usuario, admin, soporte. Se siembran en
+# database/schema.sql, no aquí.
 
 # Muestras faciales válidas que se piden por usuario.
 ENROLAMIENTO_MUESTRAS = 5

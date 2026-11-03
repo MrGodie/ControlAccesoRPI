@@ -11,8 +11,11 @@ from mysql.connector import Error
 
 from config import TIEMPO_ESPERA_BD
 
+# Las capacidades viajan con el usuario para que nadie tenga que
+# deducir permisos del nombre del rol (PIC-78).
 _SELECT_USUARIO = (
-    "SELECT u.id, u.nombre, r.nombre AS rol, r.acceso_permitido "
+    "SELECT u.id, u.nombre, u.activo, r.nombre AS rol, "
+    "       r.acceso_permitido, r.puede_gestionar, r.puede_consultar "
     "FROM usuarios u JOIN roles r ON u.rol_id = r.id "
 )
 
@@ -104,8 +107,9 @@ def registrar_intento(usuario_id, metodo, resultado):
 
 def obtener_roles():
     """
-    Devuelve [{id, nombre, descripcion, acceso_permitido}] para llenar el
-    selector de rol del alta. "ERROR_CONEXION" si la base de datos falla.
+    Devuelve [{id, nombre, descripcion, acceso_permitido,
+    puede_gestionar, puede_consultar}] para llenar el selector de rol
+    del alta. "ERROR_CONEXION" si la base de datos falla.
     """
     try:
         conexion = conectar()
@@ -117,7 +121,8 @@ def obtener_roles():
     try:
         cursor = conexion.cursor(dictionary=True)
         cursor.execute(
-            "SELECT id, nombre, descripcion, acceso_permitido "
+            "SELECT id, nombre, descripcion, acceso_permitido, "
+            "       puede_gestionar, puede_consultar "
             "FROM roles ORDER BY nombre"
         )
         return cursor.fetchall()
@@ -200,7 +205,7 @@ def obtener_usuarios():
     """
     Lista los usuarios para la pantalla de gestión.
 
-    Devuelve [{id, nombre, rol, muestras}] donde `muestras` es cuántas
+    Devuelve [{id, nombre, activo, rol, muestras}] donde `muestras` es cuántas
     plantillas faciales tiene cargadas: 0 significa que todavía no está
     enrolado. "ERROR_CONEXION" si la base de datos falla.
     """
@@ -214,12 +219,12 @@ def obtener_usuarios():
     try:
         cursor = conexion.cursor(dictionary=True)
         cursor.execute(
-            "SELECT u.id, u.nombre, r.nombre AS rol, "
+            "SELECT u.id, u.nombre, u.activo, r.nombre AS rol, "
             "       COUNT(b.id) AS muestras "
             "FROM usuarios u "
             "JOIN roles r ON u.rol_id = r.id "
             "LEFT JOIN datos_biometricos b ON b.usuario_id = u.id "
-            "GROUP BY u.id, u.nombre, r.nombre "
+            "GROUP BY u.id, u.nombre, u.activo, r.nombre "
             "ORDER BY u.nombre"
         )
         return cursor.fetchall()

@@ -20,7 +20,6 @@ import traceback
 from config import (
     LONGITUD_CLAVE,
     RECONOCIMIENTO_ACTIVO,
-    ROL_ADMINISTRADOR,
     TIEMPO_ESPERA_PRESENCIA,
     TIEMPO_PANTALLA_AUTORIZADO,
     TIEMPO_PANTALLA_DENEGADO,
@@ -133,17 +132,29 @@ def intento_facial(interfaz):
     return validator.verificar_rostro(usuario_id)
 
 
-def es_administrador(usuario):
-    """True si el usuario autorizado puede dar de alta a otros."""
-    return bool(usuario) and usuario.get("rol") == ROL_ADMINISTRADOR
+def puede_gestionar(usuario):
+    """True si puede dar de alta y modificar usuarios (rol admin)."""
+    return bool(usuario) and bool(usuario.get("puede_gestionar"))
 
 
-def gestion_usuarios(interfaz):
+def puede_consultar(usuario):
+    """True si puede ver la información de otros (rol admin o soporte)."""
+    return bool(usuario) and bool(usuario.get("puede_consultar"))
+
+
+def gestion_usuarios(interfaz, usuario):
     """
-    Pantalla de gestión: lista a los usuarios y desde ahí se da de alta
-    a los nuevos. La lista se vuelve a leer en cada vuelta para que el
-    recién enrolado aparezca de inmediato.
+    Pantalla de gestión: lista a los usuarios y, para quien pueda
+    gestionar, da de alta a los nuevos. La lista se vuelve a leer en
+    cada vuelta para que el recién enrolado aparezca de inmediato.
+
+    Un soporte llega hasta aquí pero solo mira: la pantalla no le
+    ofrece el botón de alta, y si aun así llegara una respuesta de
+    "nuevo", se ignora. El permiso se revisa de este lado, no se confía
+    en que la interfaz lo haya escondido.
     """
+    gestiona = puede_gestionar(usuario)
+
     while True:
         usuarios = db.obtener_usuarios()
         if usuarios == "ERROR_CONEXION":
@@ -151,7 +162,10 @@ def gestion_usuarios(interfaz):
             time.sleep(TIEMPO_PANTALLA_FALLO)
             return
 
-        accion = interfaz.pedir_gestion_usuarios(usuarios)
+        accion = interfaz.pedir_gestion_usuarios(usuarios, gestiona)
+        if accion == "nuevo" and not gestiona:
+            print("El rol no puede dar de alta usuarios; se ignora.")
+            continue
         if accion != "nuevo":        # "volver", None por inactividad o cierre
             return
 
@@ -163,11 +177,14 @@ def gestion_usuarios(interfaz):
 
 def sesion_administracion(interfaz, usuario):
     """
-    Menú del administrador tras una identificación autorizada.
-    Se mantiene abierto hasta que elige salir, se va sin responder o
-    cierra la ventana.
+    Menú de administración tras una identificación autorizada. Entran
+    los roles que pueden gestionar o consultar; se mantiene abierto
+    hasta que eligen salir, se van sin responder o cierran la ventana.
     """
-    print(f"Modo administración: {usuario['nombre']}")
+    print(f"Modo administración: {usuario['nombre']} "
+          f"(rol {usuario.get('rol')}, "
+          f"gestiona={puede_gestionar(usuario)}, "
+          f"consulta={puede_consultar(usuario)})")
 
     while True:
         opcion = interfaz.preguntar_menu_admin(usuario["nombre"])
@@ -175,7 +192,7 @@ def sesion_administracion(interfaz, usuario):
             print("Saliendo del modo administración.")
             return
 
-        gestion_usuarios(interfaz)
+        gestion_usuarios(interfaz, usuario)
 
 
 def ciclo_gui(interfaz):
@@ -195,7 +212,8 @@ def ciclo_gui(interfaz):
             interfaz.mostrar_resultado(resultado, usuario)
             procesar_resultado(usuario, resultado, "facial")
             _mantener_pantalla(inicio, resultado)
-            if resultado == "autorizado" and es_administrador(usuario):
+            if resultado == "autorizado" and (
+                    puede_gestionar(usuario) or puede_consultar(usuario)):
                 sesion_administracion(interfaz, usuario)
             interfaz.mostrar_reposo()
             gpio_handler.esperar_fin_presencia()
@@ -233,9 +251,10 @@ def ciclo_gui(interfaz):
     procesar_resultado(usuario, resultado, "gui")
     _mantener_pantalla(inicio, resultado)
 
-    # El administrador entra al alta de usuarios desde aquí, después de
+    # Admin y soporte entran a administración desde aquí, después de
     # identificarse con su código y clave.
-    if resultado == "autorizado" and es_administrador(usuario):
+    if resultado == "autorizado" and (
+            puede_gestionar(usuario) or puede_consultar(usuario)):
         sesion_administracion(interfaz, usuario)
 
     interfaz.mostrar_reposo()
