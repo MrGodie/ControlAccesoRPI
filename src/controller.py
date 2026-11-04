@@ -145,13 +145,14 @@ def puede_consultar(usuario):
 def gestion_usuarios(interfaz, usuario):
     """
     Pantalla de gestión: lista a los usuarios y, para quien pueda
-    gestionar, da de alta a los nuevos. La lista se vuelve a leer en
-    cada vuelta para que el recién enrolado aparezca de inmediato.
+    gestionar, da de alta a los nuevos o registra el rostro de uno que
+    ya existe (PIC-80). La lista se vuelve a leer en cada vuelta para
+    que el recién enrolado aparezca de inmediato.
 
     Un soporte llega hasta aquí pero solo mira: la pantalla no le
-    ofrece el botón de alta, y si aun así llegara una respuesta de
-    "nuevo", se ignora. El permiso se revisa de este lado, no se confía
-    en que la interfaz lo haya escondido.
+    ofrece los botones de alta ni de enrolar, y si aun así llegara una
+    de esas respuestas, se ignora. El permiso se revisa de este lado, no
+    se confía en que la interfaz lo haya escondido.
     """
     gestiona = puede_gestionar(usuario)
 
@@ -163,6 +164,21 @@ def gestion_usuarios(interfaz, usuario):
             return
 
         accion = interfaz.pedir_gestion_usuarios(usuarios, gestiona)
+
+        if isinstance(accion, tuple) and len(accion) == 2 and accion[0] == "enrolar":
+            if not gestiona:
+                print("El rol no puede enrolar usuarios; se ignora.")
+                continue
+            # Solo se enrola a alguien de la lista que se acaba de leer;
+            # un id que no esté ahí se descarta.
+            elegido = next((u for u in usuarios if u["id"] == accion[1]), None)
+            if elegido is None:
+                print(f"El usuario {accion[1]} no está en la lista; se ignora.")
+                continue
+            resultado = enrollment.enrolar_existente(interfaz, elegido)
+            print(f"Enrolamiento del usuario {elegido['id']}:", resultado)
+            continue
+
         if accion == "nuevo" and not gestiona:
             print("El rol no puede dar de alta usuarios; se ignora.")
             continue
