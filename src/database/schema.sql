@@ -6,23 +6,41 @@ USE control_acceso;
 
 -- -----------------------------------------------------
 -- Tabla: roles
+--
+-- Un rol declara QUÉ PUEDE HACER quien lo tiene, en tres
+-- capacidades independientes. El código pregunta por la capacidad,
+-- nunca por el nombre del rol: renombrar un rol no debe cambiar los
+-- permisos de nadie.
+--
+--   acceso_permitido  abre el punto de acceso
+--   puede_gestionar   da de alta y modifica usuarios
+--   puede_consultar   ve la información de otros usuarios
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS roles (
   id               INT          NOT NULL AUTO_INCREMENT,
   nombre           VARCHAR(50)  NOT NULL,
   descripcion      VARCHAR(255),
   acceso_permitido BOOLEAN      NOT NULL DEFAULT TRUE,
-  PRIMARY KEY (id)
+  puede_gestionar  BOOLEAN      NOT NULL DEFAULT FALSE,
+  puede_consultar  BOOLEAN      NOT NULL DEFAULT FALSE,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_roles_nombre (nombre)
 ) ENGINE = InnoDB;
 
 -- -----------------------------------------------------
 -- Tabla: usuarios
+--
+-- `activo` separa "qué puede hacer" (el rol) de "está habilitado"
+-- (la persona). Dar de baja a alguien se hace apagando esta columna,
+-- no borrando el registro: intentos_acceso apunta aquí y la bitácora
+-- no debe perder a quién correspondió cada intento.
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS usuarios (
   id               INT          NOT NULL AUTO_INCREMENT,
   nombre           VARCHAR(100) NOT NULL,
   credencial_hash  VARCHAR(255) NOT NULL,
   rol_id           INT          NOT NULL,
+  activo           BOOLEAN      NOT NULL DEFAULT TRUE,
   PRIMARY KEY (id),
   UNIQUE KEY uq_usuarios_credencial (credencial_hash),
   CONSTRAINT fk_usuarios_roles
@@ -68,21 +86,19 @@ CREATE TABLE IF NOT EXISTS intentos_acceso (
 
 -- -----------------------------------------------------
 -- Roles base
+--
+--   usuario   entra al punto de acceso y nada más
+--   admin     entra, y ve, registra y modifica usuarios
+--   soporte   entra, y ve la información de otros, sin modificar
 -- -----------------------------------------------------
-INSERT INTO roles (nombre, descripcion, acceso_permitido)
-SELECT 'administrador', 'Acceso completo al sistema', TRUE
-WHERE NOT EXISTS (
-  SELECT 1 FROM roles WHERE nombre = 'administrador'
-);
+INSERT INTO roles (nombre, descripcion, acceso_permitido, puede_gestionar, puede_consultar)
+SELECT 'usuario', 'Accede al punto con cualquiera de los métodos disponibles', TRUE, FALSE, FALSE
+WHERE NOT EXISTS (SELECT 1 FROM roles WHERE nombre = 'usuario');
 
-INSERT INTO roles (nombre, descripcion, acceso_permitido)
-SELECT 'usuario_estandar', 'Acceso a operaciones básicas', TRUE
-WHERE NOT EXISTS (
-  SELECT 1 FROM roles WHERE nombre = 'usuario_estandar'
-);
+INSERT INTO roles (nombre, descripcion, acceso_permitido, puede_gestionar, puede_consultar)
+SELECT 'admin', 'Ve, registra y modifica la información de los usuarios', TRUE, TRUE, TRUE
+WHERE NOT EXISTS (SELECT 1 FROM roles WHERE nombre = 'admin');
 
-INSERT INTO roles (nombre, descripcion, acceso_permitido)
-SELECT 'visitante', 'Registrado en el sistema pero sin acceso al punto', FALSE
-WHERE NOT EXISTS (
-  SELECT 1 FROM roles WHERE nombre = 'visitante'
-);
+INSERT INTO roles (nombre, descripcion, acceso_permitido, puede_gestionar, puede_consultar)
+SELECT 'soporte', 'Consulta la información de otros usuarios sin modificarla', TRUE, FALSE, TRUE
+WHERE NOT EXISTS (SELECT 1 FROM roles WHERE nombre = 'soporte');

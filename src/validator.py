@@ -35,6 +35,11 @@ def _clasificar(usuario):
     if not usuario:
         return None, "denegado_no_reconocido"
 
+    # Un usuario dado de baja conserva su registro y su bitácora, pero
+    # no entra, sin importar qué permita su rol (PIC-78).
+    if not usuario["activo"]:
+        return usuario, "denegado_sin_permiso"
+
     if not usuario["acceso_permitido"]:
         return usuario, "denegado_sin_permiso"
 

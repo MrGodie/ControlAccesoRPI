@@ -105,13 +105,19 @@ class InterfazAcceso:
         """Menú del administrador. Devuelve "gestion" o "salir"."""
         return self._preguntar(self._ui_menu_admin, nombre)
 
-    def pedir_gestion_usuarios(self, usuarios):
+    def pedir_gestion_usuarios(self, usuarios, puede_gestionar=True):
         """
         Pantalla 01 de la lámina de gestión: lista de usuarios.
         `usuarios` es lo que devuelve db.obtener_usuarios().
+
+        Con puede_gestionar=False la pantalla es de solo lectura: no se
+        dibuja el botón de alta. Esconderlo es cortesía, no seguridad;
+        quien decide es el controlador.
+
         Devuelve "nuevo" o "volver".
         """
-        resultado = self._preguntar(self._ui_lista_usuarios, usuarios)
+        resultado = self._preguntar(self._ui_lista_usuarios, usuarios,
+                                    puede_gestionar)
         return resultado or "volver"
 
     def mostrar_fallo(self, detalle):
@@ -545,20 +551,24 @@ class InterfazAcceso:
 
     # -- Lista de usuarios (lámina de gestión, pantalla 01) ----------------
 
-    def _ui_lista_usuarios(self, usuarios):
-        bloque = self._nueva_pantalla("USUARIOS")
+    def _ui_lista_usuarios(self, usuarios, puede_gestionar=True):
+        bloque = self._nueva_pantalla(
+            "USUARIOS" if puede_gestionar else "USUARIOS · SOLO LECTURA"
+        )
+        activos = sum(1 for u in usuarios if u.get("activo", True))
         enrolados = sum(1 for u in usuarios if u["muestras"] > 0)
         self._titulo(
             bloque, "Usuarios",
-            f"{len(usuarios)} dados de alta · {enrolados} con rostro registrado",
+            f"{activos} activos de {len(usuarios)} · "
+            f"{enrolados} con rostro registrado",
         )
 
         tabla = tk.Frame(bloque, bg=FONDO)
         tabla.pack(fill="x", pady=(4, 0))
-        for columna, peso in enumerate((5, 3, 2)):
+        for columna, peso in enumerate((5, 3, 2, 2)):
             tabla.grid_columnconfigure(columna, weight=peso, uniform="u")
 
-        for columna, titulo in enumerate(("NOMBRE", "ROL", "ROSTRO")):
+        for columna, titulo in enumerate(("NOMBRE", "ROL", "ROSTRO", "ESTADO")):
             tk.Label(
                 tabla, text=titulo, font=FUENTE_ETIQUETA, bg=FONDO, fg=GRIS,
                 anchor="w", padx=12,
@@ -568,12 +578,14 @@ class InterfazAcceso:
             tk.Label(
                 tabla, text="Todavía no hay usuarios dados de alta",
                 font=FUENTE_CAJA, bg=CAJA, fg=GRIS, anchor="w", padx=12, pady=10,
-            ).grid(row=1, column=0, columnspan=3, sticky="ew")
+            ).grid(row=1, column=0, columnspan=4, sticky="ew")
 
         # La pantalla es de 720 px: más de seis renglones no caben.
         for fila, usuario in enumerate(usuarios[:MAX_FILAS_USUARIOS], start=1):
             rostro = f"Sí · {usuario['muestras']}" if usuario["muestras"] else "Pendiente"
-            for columna, texto in enumerate((usuario["nombre"], usuario["rol"], rostro)):
+            estado = "Activo" if usuario.get("activo", True) else "Dado de baja"
+            for columna, texto in enumerate(
+                    (usuario["nombre"], usuario["rol"], rostro, estado)):
                 tk.Label(
                     tabla, text=texto, font=FUENTE_CAJA, bg=CAJA, fg=TEXTO,
                     anchor="w", padx=12, pady=8,
@@ -586,10 +598,13 @@ class InterfazAcceso:
                 font=FUENTE_ETIQUETA, bg=FONDO, fg=GRIS, anchor="w",
             ).pack(fill="x", pady=(6, 0))
 
-        self._botonera(bloque, [
-            ("Nuevo usuario", "nuevo", True),
-            ("Volver", "volver", False),
-        ])
+        if puede_gestionar:
+            self._botonera(bloque, [
+                ("Nuevo usuario", "nuevo", True),
+                ("Volver", "volver", False),
+            ])
+        else:
+            self._botonera(bloque, [("Volver", "volver", True)])
         self._reiniciar_inactividad()
 
     # -- 01 Nuevo usuario ---------------------------------------------------
