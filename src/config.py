@@ -110,13 +110,12 @@ ENROLAMIENTO_INTENTOS_POR_MUESTRA = 10
 ENROLAMIENTO_NOMBRE_MAX = 100
 
 # --- Audio (bocina USB Jabra Link 370) ---
-# Los .wav viven en sounds/, en la raíz del repositorio. La ruta se arma
-# desde este archivo para que funcione sin importar desde dónde se
-# arranque el programa. setup_audio.sh los puede volver a generar.
+# Los .wav viven en sounds/, en la raíz del repositorio.
 _RAIZ_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 AUDIO_EXITO = os.path.join(_RAIZ_REPO, "sounds", "exito.wav")
 AUDIO_ERROR = os.path.join(_RAIZ_REPO, "sounds", "error.wav")
+AUDIO_FALLO = os.path.join(_RAIZ_REPO, "sounds", "fallo.wav")
 
-# Dispositivo ALSA de la bocina, para aplay -D. La Jabra es la tarjeta 3;
-# si cambia (otro USB conectado, reinicio), revisar con `aplay -l`.
+# Dispositivo ALSA de la bocina.
 AUDIO_DEVICE = "plughw:3,0"

@@ -52,15 +52,19 @@ _camara_disponible = False
 def procesar_resultado(usuario, resultado, metodo):
     """
     Reacciona al resultado de validación y registra el intento,
-    sin importar si vino del rostro, de la GUI o de los botones físicos.
+    independientemente del método de identificación.
     """
+
     if resultado == "autorizado":
         gpio_handler.indicar_exito()
         exit.reproducir_audio_exito()
         exit.activar_actuador()
+
     elif resultado == "error_sistema":
         gpio_handler.indicar_error_sistema()
-    else:  # cualquier denegado
+        exit.reproducir_audio_fallo()
+
+    else:
         gpio_handler.indicar_error()
         exit.reproducir_audio_error()
 
@@ -70,6 +74,39 @@ def procesar_resultado(usuario, resultado, metodo):
         resultado=resultado
     )
 
+def procesar_resultado_enrolamiento(resultado):
+    """
+    Proporciona retroalimentación física al terminar un enrolamiento.
+
+    El enrolamiento no debe activar el servomotor porque no representa
+    una autorización de acceso.
+    """
+
+    if resultado == enrollment.COMPLETADO:
+        gpio_handler.indicar_exito()
+        exit.reproducir_audio_exito()
+
+    elif resultado == enrollment.CLAVE_DUPLICADA:
+        gpio_handler.indicar_error()
+        exit.reproducir_audio_error()
+
+    elif resultado in (
+        enrollment.FALLO_CAMARA,
+        enrollment.FALLO_BD,
+    ):
+        gpio_handler.indicar_error_sistema()
+        exit.reproducir_audio_fallo()
+
+    elif resultado in (
+        enrollment.CANCELADO,
+        enrollment.OTRO,
+    ):
+        # No se genera una señal de error por cancelar
+        # o solicitar otro enrolamiento.
+        pass
+
+    else:
+        print("Resultado de enrolamiento no reconocido:", resultado)
 
 def _mantener_pantalla(inicio, resultado):
     """
@@ -176,6 +213,7 @@ def gestion_usuarios(interfaz, usuario):
                 print(f"El usuario {accion[1]} no está en la lista; se ignora.")
                 continue
             resultado = enrollment.enrolar_existente(interfaz, elegido)
+            procesar_resultado_enrolamiento(resultado)
             print(f"Enrolamiento del usuario {elegido['id']}:", resultado)
             continue
 
@@ -186,6 +224,7 @@ def gestion_usuarios(interfaz, usuario):
             return
 
         resultado = enrollment.enrolar(interfaz)
+        procesar_resultado_enrolamiento(resultado)
         print("Enrolamiento:", resultado)
         # Con cualquier final se regresa a la lista: ahí el administrador
         # ve el resultado y decide si sigue dando de alta.
