@@ -52,38 +52,17 @@ CALL migrar_control_acceso();
 DROP PROCEDURE IF EXISTS migrar_control_acceso;
 
 -- -----------------------------------------------------
--- 5. Insertar roles que todavía no existen.
+-- 5 y 6. Roles base (OBSOLETAS, PIC-78).
+--
+-- Insertaban y ajustaban 'administrador', 'usuario_estandar' y
+-- 'visitante'. Esos roles ya no existen: la sección 9 los reemplaza
+-- por usuario, admin y soporte, y reasigna a quien los tuviera.
+--
+-- Se quitaron en lugar de dejarlas: si se quedan, cada corrida vuelve
+-- a crear los tres roles viejos un momento antes de que la sección 9
+-- los borre, y basta con que la 9 falle a media migración para que
+-- queden otra vez en la tabla.
 -- -----------------------------------------------------
-
-INSERT INTO roles (nombre, descripcion, acceso_permitido)
-SELECT 'administrador', 'Acceso completo al sistema', TRUE
-WHERE NOT EXISTS (
-  SELECT 1 FROM roles WHERE nombre = 'administrador'
-);
-
-INSERT INTO roles (nombre, descripcion, acceso_permitido)
-SELECT 'usuario_estandar', 'Acceso a operaciones básicas', TRUE
-WHERE NOT EXISTS (
-  SELECT 1 FROM roles WHERE nombre = 'usuario_estandar'
-);
-
-INSERT INTO roles (nombre, descripcion, acceso_permitido)
-SELECT 'visitante', 'Registrado en el sistema pero sin acceso al punto', FALSE
-WHERE NOT EXISTS (
-  SELECT 1 FROM roles WHERE nombre = 'visitante'
-);
-
--- -----------------------------------------------------
--- 6. Asegurar los permisos de los roles base.
--- -----------------------------------------------------
-
-UPDATE roles
-SET acceso_permitido = TRUE
-WHERE nombre IN ('administrador', 'usuario_estandar');
-
-UPDATE roles
-SET acceso_permitido = FALSE
-WHERE nombre = 'visitante';
 
 -- -----------------------------------------------------
 -- 7. Biometric data table (PIC-11).
@@ -137,9 +116,6 @@ GRANT SELECT, INSERT
 FLUSH PRIVILEGES;
 
 -- =====================================================================
--- AGREGA ESTO AL FINAL DE src/database/migration.sql
--- =====================================================================
-
 -- -----------------------------------------------------
 -- 9. Tres roles con capacidades declaradas (PIC-78).
 --
@@ -166,6 +142,39 @@ FLUSH PRIVILEGES;
 --
 -- Es seguro correrlo varias veces.
 -- -----------------------------------------------------
+
+-- -----------------------------------------------------
+-- 9.0 Quitar roles duplicados.
+--
+-- Antes de PIC-78 la columna roles.nombre no era única, así que la
+-- tabla pudo acumular varias filas con el mismo nombre (por ejemplo
+-- dos 'visitante'). Con duplicados, el índice único de 9.3 no se puede
+-- crear y la migración se detiene con el error 1062.
+--
+-- De cada nombre repetido se conserva la fila de id más bajo, que es
+-- la original, y los usuarios que apuntaban a las copias se reasignan
+-- a ella antes de borrarlas. Nadie se queda sin rol.
+-- -----------------------------------------------------
+
+DROP TEMPORARY TABLE IF EXISTS roles_a_conservar;
+
+CREATE TEMPORARY TABLE roles_a_conservar AS
+SELECT nombre, MIN(id) AS id_bueno
+  FROM roles
+ GROUP BY nombre;
+
+UPDATE usuarios u
+  JOIN roles r              ON u.rol_id = r.id
+  JOIN roles_a_conservar k  ON k.nombre = r.nombre
+   SET u.rol_id = k.id_bueno
+ WHERE u.rol_id <> k.id_bueno;
+
+DELETE r
+  FROM roles r
+  JOIN roles_a_conservar k ON k.nombre = r.nombre
+ WHERE r.id <> k.id_bueno;
+
+DROP TEMPORARY TABLE roles_a_conservar;
 
 -- 9.1 Columnas de capacidad en roles.
 DROP PROCEDURE IF EXISTS migrar_roles_pic78;
