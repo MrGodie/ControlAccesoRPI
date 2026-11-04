@@ -264,6 +264,54 @@ def guardar_biometria(usuario_id, embedding, modelo, tipo="facial"):
         conexion.close()
 
 
+def reemplazar_biometria(usuario_id, embeddings, modelo, tipo="facial"):
+    """
+    Sustituye las plantillas de un usuario por `embeddings` (lista de
+    bytes) en una sola transacción: borra las que tenía de ese tipo y
+    guarda las nuevas. Si algo falla se deshace todo y el usuario conserva
+    las anteriores; nunca se queda sin rostro a medias.
+
+    Se usa al volver a enrolar a alguien que ya existe (PIC-80).
+    Devuelve True si se guardó todo, False si no.
+    """
+    if not embeddings:
+        return False
+
+    try:
+        conexion = conectar()
+    except Error as e:
+        print("No se pudo reemplazar la biometría (fallo de conexión):", e)
+        return False
+
+    cursor = None
+    try:
+        # autocommit está apagado: el DELETE y los INSERT van en la misma
+        # transacción hasta el commit.
+        cursor = conexion.cursor()
+        cursor.execute(
+            "DELETE FROM datos_biometricos WHERE usuario_id = %s AND tipo = %s",
+            (usuario_id, tipo)
+        )
+        cursor.executemany(
+            "INSERT INTO datos_biometricos (usuario_id, tipo, embedding, modelo) "
+            "VALUES (%s, %s, %s, %s)",
+            [(usuario_id, tipo, embedding, modelo) for embedding in embeddings]
+        )
+        conexion.commit()
+        return True
+    except Error as e:
+        print("Error al reemplazar la biometría; se conservan las anteriores:", e)
+        try:
+            conexion.rollback()
+        except Error:
+            pass
+        return False
+    finally:
+        if cursor:
+            cursor.close()
+        conexion.close()
+
+
 def obtener_biometria(usuario_id=None):
     """
     Devuelve una lista de dicts (id, usuario_id, embedding, modelo).

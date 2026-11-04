@@ -111,10 +111,10 @@ class InterfazAcceso:
         `usuarios` es lo que devuelve db.obtener_usuarios().
 
         Con puede_gestionar=False la pantalla es de solo lectura: no se
-        dibuja el botón de alta. Esconderlo es cortesía, no seguridad;
-        quien decide es el controlador.
+        dibujan los botones de alta ni de enrolar. Esconderlos es
+        cortesía, no seguridad; quien decide es el controlador.
 
-        Devuelve "nuevo" o "volver".
+        Devuelve "nuevo", ("enrolar", usuario_id) o "volver".
         """
         resultado = self._preguntar(self._ui_lista_usuarios, usuarios,
                                     puede_gestionar)
@@ -149,9 +149,13 @@ class InterfazAcceso:
         """
         return self._preguntar(self._ui_nuevo_usuario, roles, valores, error)
 
-    def confirmar_captura(self, nombre):
-        """Pantalla 02: preparación. True si se inicia la captura."""
-        return self._preguntar(self._ui_preparar_captura, nombre) == "iniciar"
+    def confirmar_captura(self, nombre, aviso=None):
+        """
+        Pantalla 02: preparación. True si se inicia la captura.
+        `aviso` es un texto destacado opcional, por ejemplo que las
+        plantillas que ya tiene el usuario se van a reemplazar.
+        """
+        return self._preguntar(self._ui_preparar_captura, nombre, aviso) == "iniciar"
 
     def mostrar_captura(self, numero, total, instruccion=None):
         """
@@ -563,12 +567,20 @@ class InterfazAcceso:
             f"{enrolados} con rostro registrado",
         )
 
+        # Quien puede gestionar tiene una columna más, con el botón para
+        # registrar el rostro de ese usuario (PIC-80).
+        titulos = ["NOMBRE", "ROL", "ROSTRO", "ESTADO"]
+        pesos = [5, 3, 2, 2]
+        if puede_gestionar:
+            titulos.append("")
+            pesos.append(2)
+
         tabla = tk.Frame(bloque, bg=FONDO)
         tabla.pack(fill="x", pady=(4, 0))
-        for columna, peso in enumerate((5, 3, 2, 2)):
+        for columna, peso in enumerate(pesos):
             tabla.grid_columnconfigure(columna, weight=peso, uniform="u")
 
-        for columna, titulo in enumerate(("NOMBRE", "ROL", "ROSTRO", "ESTADO")):
+        for columna, titulo in enumerate(titulos):
             tk.Label(
                 tabla, text=titulo, font=FUENTE_ETIQUETA, bg=FONDO, fg=GRIS,
                 anchor="w", padx=12,
@@ -578,7 +590,7 @@ class InterfazAcceso:
             tk.Label(
                 tabla, text="Todavía no hay usuarios dados de alta",
                 font=FUENTE_CAJA, bg=CAJA, fg=GRIS, anchor="w", padx=12, pady=10,
-            ).grid(row=1, column=0, columnspan=4, sticky="ew")
+            ).grid(row=1, column=0, columnspan=len(titulos), sticky="ew")
 
         # La pantalla es de 720 px: más de seis renglones no caben.
         for fila, usuario in enumerate(usuarios[:MAX_FILAS_USUARIOS], start=1):
@@ -590,6 +602,17 @@ class InterfazAcceso:
                     tabla, text=texto, font=FUENTE_CAJA, bg=CAJA, fg=TEXTO,
                     anchor="w", padx=12, pady=8,
                 ).grid(row=fila, column=columna, sticky="ew", pady=(0, 4))
+            if puede_gestionar:
+                # Más bajo que el renglón, para que la tabla no crezca.
+                tk.Button(
+                    tabla,
+                    text="Re-enrolar" if usuario["muestras"] else "Enrolar",
+                    font=FUENTE_ETIQUETA, bg=FONDO, fg=TEXTO,
+                    activebackground=CAJA, activeforeground=TEXTO,
+                    padx=8, pady=2,
+                    command=lambda uid=usuario["id"]: self._responder(("enrolar", uid)),
+                ).grid(row=fila, column=len(titulos) - 1, sticky="ew",
+                       padx=(8, 0), pady=(0, 4))
 
         if len(usuarios) > MAX_FILAS_USUARIOS:
             tk.Label(
@@ -691,9 +714,11 @@ class InterfazAcceso:
 
     # -- 02 Preparación -----------------------------------------------------
 
-    def _ui_preparar_captura(self, nombre):
+    def _ui_preparar_captura(self, nombre, aviso=None):
         bloque = self._nueva_pantalla("PREPARACIÓN")
         self._titulo(bloque, "Prepare la captura", nombre)
+        if aviso:
+            self._caja(bloque, aviso)
         self._marcador_camara(bloque, "VISTA PREVIA DE CÁMARA")
         self._vinetas(bloque, [
             "1 · Colóquese frente a la cámara, a unos 50 cm",

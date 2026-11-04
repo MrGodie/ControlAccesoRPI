@@ -12,6 +12,11 @@ El usuario se crea en la base de datos hasta el final, cuando ya hay
 muestras válidas: si el administrador cancela a medias, no queda nadie
 dado de alta ni una clave ocupada.
 
+También registra el rostro de un usuario que ya existe
+(enrolar_existente, PIC-80), con la misma captura que el alta. Si ya
+tenía plantillas se reemplazan, y solo hasta que las nuevas están
+completas.
+
 Todo fallo se muestra en una pantalla que ESPERA al administrador
 (Reintentar / Salir). Antes los avisos se pintaban y se reemplazaban al
 instante por el menú, así que parecía que el botón "Nuevo usuario" no
@@ -100,6 +105,24 @@ def _capturar_muestras(interfaz):
         muestras.append(embedding)
 
     return muestras, None
+
+
+def _capturar_con_camara(interfaz):
+    """
+    Abre la cámara y captura las muestras (pantallas 03, 04 y 08). Si la
+    cámara falla, ofrece reintentar desde cero.
+
+    Devuelve (muestras, motivo): motivo es None, CANCELADO o FALLO_CAMARA.
+    """
+    while True:
+        try:
+            with camera.sesion_camara():
+                return _capturar_muestras(interfaz)
+        except camera.CamaraError as error:
+            # Pantalla 05: fallo técnico, distinto de un rechazo (NFR-04).
+            print("Fallo de cámara durante el enrolamiento:", error)
+            if not _fallo(interfaz, "Sin acceso a la cámara", FALLO_CAMARA):
+                return [], FALLO_CAMARA
 
 
 def _guardar(datos, muestras):
@@ -192,17 +215,9 @@ def enrolar(interfaz):
         return CANCELADO
 
     # Pantallas 03, 04 y 08.
-    while True:
-        try:
-            with camera.sesion_camara():
-                muestras, motivo = _capturar_muestras(interfaz)
-            break
-        except camera.CamaraError as error:
-            # Pantalla 05: fallo técnico, distinto de un rechazo (NFR-04).
-            print("Fallo de cámara durante el enrolamiento:", error)
-            if not _fallo(interfaz, "Sin acceso a la cámara", FALLO_CAMARA):
-                return FALLO_CAMARA
-
+    muestras, motivo = _capturar_con_camara(interfaz)
+    if motivo == FALLO_CAMARA:
+        return FALLO_CAMARA
     if motivo == CANCELADO or not muestras:
         return CANCELADO
 
@@ -228,3 +243,65 @@ def enrolar(interfaz):
     )
     print(f"Usuario {usuario_id} enrolado con {len(muestras)} muestras.")
     return OTRO if accion == "otro" else COMPLETADO
+
+
+def enrolar_existente(interfaz, usuario):
+    """
+    Registra el rostro de un usuario que ya existe (PIC-80). `usuario` es
+    un renglón de db.obtener_usuarios(): {id, nombre, activo, rol, muestras}.
+
+    Si ya tenía plantillas, se reemplazan. Las nuevas se capturan y se
+    validan completas antes de tocar la base, y el reemplazo es una sola
+    transacción: si algo falla, el usuario conserva su rostro anterior.
+
+    Devuelve uno de: COMPLETADO, CANCELADO, FALLO_CAMARA, FALLO_BD.
+    """
+    if not face.disponible():
+        _fallo(interfaz, "El reconocimiento facial no está disponible",
+               FALLO_CAMARA, reintentable=False)
+        return FALLO_CAMARA
+
+    # Pantalla 02. Si ya tiene rostro, la misma pantalla avisa que se
+    # reemplaza: iniciar la captura es la confirmación.
+    aviso = None
+    if usuario.get("muestras"):
+        aviso = (f"Ya tiene {usuario['muestras']} muestras registradas: "
+                 "se reemplazarán por las nuevas al terminar")
+    if not interfaz.confirmar_captura(usuario["nombre"], aviso):
+        return CANCELADO
+
+    # Pantallas 03, 04 y 08: la misma captura que el alta.
+    muestras, motivo = _capturar_con_camara(interfaz)
+    if motivo == FALLO_CAMARA:
+        return FALLO_CAMARA
+    if motivo == CANCELADO or not muestras:
+        return CANCELADO
+
+    # Todo se valida y se serializa antes de tocar la base: si algo sale
+    # mal aquí, las plantillas anteriores siguen intactas.
+    plantillas = [face.serializar(embedding) for embedding in muestras]
+    if len(plantillas) < ENROLAMIENTO_MUESTRAS or not all(plantillas):
+        _fallo(interfaz, "Las muestras capturadas no son válidas",
+               FALLO_CAMARA, reintentable=False)
+        return FALLO_CAMARA
+
+    # Pantalla 06. Si el guardado falla, la transacción se deshizo: el
+    # usuario conserva su rostro anterior y se reintenta con las mismas
+    # muestras, sin volver a capturar.
+    interfaz.mostrar_generando_plantilla(len(plantillas))
+    while not db.reemplazar_biometria(usuario["id"], plantillas,
+                                      RECONOCIMIENTO_MODELO):
+        if not _fallo(interfaz, "No se pudieron guardar las plantillas", FALLO_BD):
+            return FALLO_BD
+        interfaz.mostrar_generando_plantilla(len(plantillas))
+
+    # Las plantillas en memoria quedaron viejas: que se recarguen.
+    face.invalidar_plantillas()
+
+    # Pantalla 07. Cualquier botón regresa a la lista de usuarios, que es
+    # donde se elige al siguiente.
+    interfaz.mostrar_enrolamiento_completo(
+        usuario["nombre"], usuario.get("rol", ""), len(plantillas), usuario["id"]
+    )
+    print(f"Usuario {usuario['id']} re-enrolado con {len(plantillas)} muestras.")
+    return COMPLETADO
