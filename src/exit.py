@@ -11,7 +11,7 @@ import subprocess
 import sys
 import time
 
-from config import AUDIO_EXITO, AUDIO_ERROR, AUDIO_DEVICE
+from config import AUDIO_EXITO, AUDIO_ERROR, AUDIO_DEVICE, AUDIO_FALLO
 import gpio_handler
 
 
@@ -42,6 +42,8 @@ def reproducir_audio_exito():
 def reproducir_audio_error():
     return _reproducir(AUDIO_ERROR)
 
+def reproducir_audio_fallo():
+    _reproducir(AUDIO_FALLO)
 
 def activar_actuador():
     servo = gpio_handler.pwm_servo
