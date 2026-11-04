@@ -117,5 +117,13 @@ AUDIO_EXITO = os.path.join(_RAIZ_REPO, "sounds", "exito.wav")
 AUDIO_ERROR = os.path.join(_RAIZ_REPO, "sounds", "error.wav")
 AUDIO_FALLO = os.path.join(_RAIZ_REPO, "sounds", "fallo.wav")
 
-# Dispositivo ALSA de la bocina.
-AUDIO_DEVICE = "plughw:3,0"
+# Nombre (o parte del nombre) de la bocina tal como aparece en
+# /proc/asound/cards o en `aplay -l`. Se busca por nombre porque el
+# número de tarjeta cambia al reiniciar o al conectar otro USB: con
+# "plughw:3,0" fijo, el audio dejaba de sonar sin avisar (PIC-82).
+AUDIO_TARJETA = "Jabra"
+
+# Dispositivo ALSA fijo para aplay -D, por ejemplo
+# "plughw:CARD=Link370,DEV=0". None = buscar la tarjeta por AUDIO_TARJETA.
+# En cualquier caso, si ese dispositivo falla se intenta con "default".
+AUDIO_DEVICE = None
