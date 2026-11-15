@@ -25,11 +25,17 @@ Jira project: **PIC** (ControlAccesoRPI) · Repository: `MrGodie/ControlAccesoRP
 | **FR-07** Complete identification with buttons when the GUI is unavailable | PIC-53, PIC-60 | #56 | Manual on prototype |
 | **FR-08** One shared validation path for both input methods | PIC-47, PIC-48 | #49, #51 | Pending |
 | **FR-09** Log every attempt in MySQL with id, timestamp, method and outcome | PIC-48, PIC-18 | #51 | Pending — PIC-18 still in progress |
-| **FR-10** Audible response and actuator activation on authorized access | PIC-52 | #53 | Manual on prototype (servo 2 s open, 0.5 s close) |
-| **FR-11** Distinguish authorized / no permission / unknown credential / DB failure | PIC-50 | #52 | Manual on prototype (distinct LED pattern for system error) |
-| **FR-12** Acquire images, detect and identify a face, then authorize accordingly | PIC-14, PIC-19, PIC-16, PIC-17, PIC-59 | #75 | Pending — only capture and quality validation are merged; recognition not implemented |
-| **FR-13** Guided facial enrollment flow for the administrator | PIC-12, PIC-15, PIC-61 | #73 | Pending — wireframes merged, flow not implemented |
-| **FR-14** Store the facial template with the user, deleted along with the user | PIC-9, PIC-10, PIC-11 | #70, #71 | Pending — schema merged, cascade delete not verified |
+| **FR-10** Audible response and actuator activation on authorized access | PIC-52, PIC-76, PIC-79, PIC-82 | #53, #91, #95, #96, #97 | Manual on prototype (servo 2 s open, 0.5 s close); audio through the USB speaker (#91, #96, #97) has no recorded verification yet |
+| **FR-11** Distinguish authorized / no permission / unknown credential / DB failure | PIC-50, PIC-78, PIC-79 | #52, #92, #95 | Manual on prototype (distinct LED pattern for system error) |
+| **FR-12** Acquire images, detect and identify a face, then authorize accordingly | PIC-14, PIC-19, PIC-16, PIC-17, PIC-59, PIC-68, PIC-71, PIC-72, PIC-73 | #75, #82, #84, #85, #86, #90 | Pending — implemented (`src/face.py` identifies against the stored templates; `controller.intento_facial` authorizes through `validator.verificar_rostro`), no recorded verification |
+| **FR-13** Guided facial enrollment flow for the administrator | PIC-12, PIC-15, PIC-61, PIC-70, PIC-71, PIC-75, PIC-80 | #73, #83, #84, #88, #94 | Pending — flow implemented in `src/enrollment.py` (new users, and existing users since #94), no recorded verification |
+| **FR-14** Store the facial template with the user, deleted along with the user | PIC-9, PIC-10, PIC-11, PIC-74, PIC-77 | #70, #71, #87, #89 | Pending — `ON DELETE CASCADE` is declared in `schema.sql` and `migration.sql`; cascade delete not verified |
+| **FR-15** Identify the user from the mobile application | PIC-105 | — | Pending — mobile application not implemented (stack under review, PIC-102) |
+| **FR-16** Enable the mobile access request only after the PIR detects presence | PIC-105 | — | Pending — mobile application not implemented |
+| **FR-17** Send the access request from the app and receive the result there | PIC-105 | — | Pending — mobile application not implemented |
+| **FR-18** App distinguishes authorized / denied / not completed for a technical condition | PIC-105 | — | Pending — mobile application not implemented |
+| **FR-19** App returns to its initial state when the operation ends | PIC-105 | — | Pending — mobile application not implemented |
+| **FR-20** Same validation logic for the app as for the existing access methods | PIC-105 | — | Pending — mobile application not implemented |
 
 ## 2. Non-functional requirements
 
@@ -41,8 +47,11 @@ Jira project: **PIC** (ControlAccesoRPI) · Repository: `MrGodie/ControlAccesoRP
 | **NFR-04** A DB failure is never reported or logged as "access denied" | PIC-50 | #52 | Manual on prototype (separate `error_sistema` result type) |
 | **NFR-05** GUI, validation and data access as independent modules | PIC-47, PIC-48 | #49, #51 | Manual review by the team |
 | **NFR-06** No credentials or secrets in plain text in the repository | PIC-48 | #51 | Pending — no automated check in CI |
-| **NFR-07** Detection, identification, storage and decision run entirely locally | PIC-14, PIC-19 | #75 | Pending — holds for the merged camera module; recognition not implemented |
-| **NFR-08** Store only the biometric template, never the captured images | PIC-11, PIC-19 | #70, #75 | Pending |
+| **NFR-07** Detection, identification, storage and decision run entirely locally | PIC-14, PIC-19, PIC-68 | #75, #82 | Pending — `src/face.py` runs DeepFace on the Raspberry Pi (the model weights are downloaded once); not verified |
+| **NFR-08** Store only the biometric template, never the captured images | PIC-11, PIC-19, PIC-70 | #70, #75, #83 | Pending — the access and enrollment flows write no image to disk (only the manual `camera.py` self-test saves a frame, when run with `--guardar`); not verified |
+| **NFR-09** The mobile application has no administrative functions | PIC-105 | — | Pending — mobile application not implemented |
+| **NFR-10** The existing access methods keep working unchanged | PIC-105 | — | Pending — mobile application not implemented |
+| **NFR-11** A technical failure in the app is never reported or logged as "access denied" | PIC-105 | — | Pending — mobile application not implemented |
 
 ## 3. Design and documentation artifacts
 
@@ -57,8 +66,8 @@ Jira project: **PIC** (ControlAccesoRPI) · Repository: `MrGodie/ControlAccesoRP
 | DFD level 0 and level 1 | PIC-22 | #76 |
 | Sequence and state diagrams | PIC-24, PIC-58 | #76 |
 | Requirements document updated for facial recognition | PIC-25 | #69 |
-| System architecture diagram | PIC-23 | #77 *(open)* |
-| `flow.md` and `system_flowchart.md` with facial recognition | PIC-66, PIC-67 | #78 *(open)* |
+| System architecture diagram | PIC-23 | #77 |
+| `flow.md` and `system_flowchart.md` with facial recognition | PIC-66, PIC-67 | #78 |
 
 ## 4. Coverage gaps
 
@@ -66,11 +75,13 @@ Open items that keep requirements from being fully traceable:
 
 - **No automated tests.** Epic PIC-1 has no test suite; every "pending" entry above
   depends on it.
-- **Facial recognition not implemented.** PIC-16, PIC-17, PIC-59 and PIC-15 are in
-  progress, so FR-12, FR-13, NFR-07 and NFR-08 are only partially covered by the
-  merged camera module (#75).
-- **`data.md` is outdated and not in English** (PIC-65, in progress).
+- **Facial recognition implemented but not verified.** `face.py` (#82) and
+  `enrollment.py` (#83) are merged, so FR-12, FR-13, NFR-07 and NFR-08 are
+  implemented; none of them has a recorded verification yet.
 - **README not yet updated** for this version (PIC-63).
+- **Mobile application not implemented.** FR-15 to FR-20 and NFR-09 to NFR-11
+  (Integrativo 4) have no implementation yet; the technology stack is still under
+  review (PIC-102).
 
 ---
 
@@ -124,6 +135,24 @@ the Jira migration (PIC-7, PR #7) refer to GitHub issues.
 | Authentication and management wireframes | PIC-20, PIC-21 | #74 | docs/Interface_3.png and docs/Interface_4.png, same grid and style as the previous sheets. Approved by 1 reviewer. |
 | Camera module created and integrated | PIC-19 | #75 | src/camera.py with capture, quality validation and guaranteed release; the system still starts without a camera. Approved by 1 reviewer. |
 | Updated the original flowcharts | PIC-22, PIC-24, PIC-58 | #76 | docs/dfd-0.md, dfd-1.md, sequence.md and states.md updated for facial recognition and translated to English. Approved by 1 reviewer. |
-| System architecture diagram | PIC-23 | #77 | docs/system_architecture.md with hardware, application modules and database. **Open**, approved by 1 reviewer. |
-| Flow and system flowcharts with facial recognition | PIC-66, PIC-67 | #78 | docs/flow.md and docs/system_flowchart.md updated and translated to English. **Open**, approved by 1 reviewer. |
+| System architecture diagram | PIC-23 | #77 | docs/system_architecture.md with hardware, application modules and database. Approved by 2 reviewers. |
+| Flow and system flowcharts with facial recognition | PIC-66, PIC-67 | #78 | docs/flow.md and docs/system_flowchart.md updated and translated to English. Approved by 2 reviewers. |
 | Fixed buttons not detected under the GUI | PIC-69 | #79 | Physical buttons now register while the graphical interface is active. |
+| Traceability mapped per requirement | PIC-64 | #80 | traceability.md rewritten to map every requirement to its Jira issue, PR and test. Approved by 2 reviewers. |
+| Updated and fixed data.md | PIC-65 | #81 | docs/data.md corrected and updated. Approved by 1 reviewer. |
+| GUI updated to the new wireframes, face module added | PIC-68 | #82 | src/face.py created; gui.py, controller.py, validator.py and config.py updated for facial authentication. Approved by 1 reviewer. |
+| Enrollment module added | PIC-70 | #83 | src/enrollment.py created and wired into controller.py, gui.py, db.py and config.py. Approved by 1 reviewer. |
+| User management page added | PIC-71 | #84 | Fixed the user management button and the relationships between controller.py, enrollment.py, face.py and gui.py. Approved by 1 reviewer. |
+| Fixed the user interface logic | PIC-72 | #85 | controller.py, db.py and gui.py adjusted. Approved by 1 reviewer. |
+| Fixed the camera configuration | PIC-73 | #86 | config.py corrected for the camera. Approved by 1 reviewer. |
+| App account granted access to the biometric tables | PIC-74 | #87 | migration.sql grants the application's database account access to the biometric tables. Approved by 2 reviewers. |
+| GUI aligned with the enrollment flow | PIC-75 | #88 | gui.py matches the interface expected by the enrollment module. Approved by 1 reviewer. |
+| Biometric functions restored in the database module | PIC-77 | #89 | The biometric functions of db.py were restored. Approved by 1 reviewer. |
+| OpenCV backend for the USB camera | PIC-73 | #90 | config.py selects the OpenCV backend for the USB camera. Approved by 1 reviewer. |
+| Access sounds through the USB speaker | PIC-76 | #91 | exit.py plays the sounds through the USB speaker; added setup_audio.sh and sounds/. Approved by 1 reviewer. |
+| Role set replaced with declared capabilities | PIC-78 | #92 | Roles declare their capabilities in the schema and migration; controller.py, db.py, gui.py and validator.py use them. Approved by 2 reviewers. |
+| Duplicate roles cleaned before the unique index | PIC-81 | #93 | migration.sql removes duplicate roles before adding the unique index. Approved by 2 reviewers. |
+| Face enrollment for existing users | PIC-80 | #94 | An administrator can enroll the face of a user who already exists. Approved by 1 reviewer. |
+| Fixed LEDs and audio not being called | PIC-79 | #95 | controller.py and exit.py now trigger the LEDs and sounds; added sounds/fallo.wav. Approved by 2 reviewers. |
+| USB speaker found by name | PIC-82 | #96 | exit.py finds the USB speaker by name instead of a fixed card number. Approved by 2 reviewers. |
+| New team access sounds | PIC-82 | #97 | sounds/ replaced with the team's new sounds; error and fallo are repeated. Approved by 2 reviewers. |
