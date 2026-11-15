@@ -1,37 +1,37 @@
 ```mermaid
 flowchart TD
-    A([Inicio / estado de espera]) --> B{¿PIR detecta presencia?}
+    A([Idle]) --> B{PIR detects presence?}
     B -- No --> A
-    B -- Sí --> C{¿Interfaz gráfica disponible?}
+    B -- Yes --> C{Identification channel}
 
-    C -- Sí --> D[Mostrar pantalla de identificación]
-    D --> E[/Capturar identificación y PIN en la GUI/]
-    E --> V[[Validar acceso: lógica compartida]]
+    C -- Mobile app --> M[App enables request,<br/>user sends ID + PIN]
+    C -- Camera --> F[Capture and recognize face locally]
+    C -- GUI --> G[ID + PIN on screen or buttons]
+    C -- No monitor --> K[PIN with buttons]
 
-    C -- No --> F[/Leer pulsación de botón/]
-    F --> G[[Agregar valor a secuencia]]
-    G --> H{¿Longitud alcanzada?}
-    H -- No --> F
-    H -- Sí --> V
+    F --> FK{Known face?}
+    FK -- No --> R4[Denied: unknown face]
+    FK -- Yes --> V
+    M --> V
+    G --> V
+    K --> V
 
-    V --> I{¿Consulta a MySQL exitosa?}
-    I -- No --> R5[Mostrar: No es posible completar la operación]
-    I -- Sí --> J{¿Usuario existe?}
-    J -- No --> R4[Mostrar: Usuario no reconocido]
-    J -- Sí --> K{¿Credencial correcta?}
-    K -- No --> R3[Mostrar: Credencial incorrecta]
-    K -- Sí --> L{¿El rol tiene permiso?}
-    L -- No --> R2[Mostrar: Acceso denegado, sin permiso]
-    L -- Sí --> R1[Mostrar: Acceso autorizado]
+    V[[validator.py: shared validation]] --> N{DB responded?}
+    N -- No --> R5[System error]
+    N -- Yes --> UR{User recognized?}
+    UR -- No --> R3[Denied: not recognized]
+    UR -- Yes --> P{Active and role allows access?}
+    P -- No --> R2[Denied: no permission]
+    P -- Yes --> R1[Authorized: green LED, motor, success audio]
 
-    R1 --> S[Reproducir audio: Acceso correcto]
-    S --> T[Activar actuador]
-    T --> REG[Registrar intento: usuario, método, resultado, fecha y hora]
-    R2 --> REG
-    R3 --> REG
-    R4 --> REG
-    R5 --> REG
+    R1 & R2 & R3 & R4 & R5 --> LOG[Log attempt: user, method, result, time]
+    LOG --> OUT[Show result on GUI or app]
+    OUT --> RST[Reset state] --> A
 
-    REG --> Z[Reiniciar estado]
-    Z --> A
-    ```
+    classDef ok fill:#E4F3DE,stroke:#548235,color:#375623;
+    classDef bad fill:#FBE2E1,stroke:#C0504D,color:#7A2E2C;
+    classDef app fill:#DDEBF7,stroke:#1F4E79,color:#1F3864;
+    class R1 ok;
+    class R2,R3,R4,R5 bad;
+    class M app;
+```
