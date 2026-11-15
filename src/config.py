@@ -4,6 +4,8 @@
 Configuración centralizada del sistema.
 Modificar aquí no requiere tocar la lógica de GPIO ni de validación.
 """
+import os
+
 BOCINA = 27
 SERVO = 26
 
@@ -47,3 +49,81 @@ TIEMPO_ESPERA_BD = 5            # sin respuesta de la BD -> error del sistema
 TIEMPO_PANTALLA_AUTORIZADO = 5
 TIEMPO_PANTALLA_DENEGADO = 4
 TIEMPO_PANTALLA_FALLO = 4
+
+# --- Camera (facial recognition subsystem) ---
+# "opencv": USB webcam or video file | "picamera2": Raspberry Pi camera module
+CAMARA_BACKEND = "opencv"
+CAMARA_FUENTE = 0                    # opencv only: device index (0, 1...) or video file path (for tests)
+CAMARA_ANCHO = 640
+CAMARA_ALTO = 480
+CAMARA_FOTOGRAMAS_CALENTAMIENTO = 5  # frames discarded after opening (auto exposure settles)
+CAMARA_TIMEOUT_APERTURA = 5          # seconds before giving up opening the camera
+CAMARA_INTENTOS_CAPTURA = 10         # frames tried to obtain one valid sample
+
+# Image quality thresholds (starting values: calibrate with the real camera and lighting)
+CALIDAD_BRILLO_MIN = 40              # mean gray level (0-255) below this = too dark
+CALIDAD_BRILLO_MAX = 220             # above this = too bright
+CALIDAD_NITIDEZ_MIN = 60             # variance of the Laplacian below this = blurry
+
+# --- Reconocimiento facial (DeepFace, local) ---
+# Activa o desactiva el intento facial sin tocar el código.
+RECONOCIMIENTO_ACTIVO = True
+
+# SFace y GhostFaceNet son los ligeros; VGG-Face (el default de DeepFace)
+# es demasiado pesado para la Raspberry.
+RECONOCIMIENTO_MODELO = "SFace"
+
+# opencv es el detector más ligero; retinaface y mtcnn son mucho más lentos.
+RECONOCIMIENTO_DETECTOR = "opencv"
+
+# Distancia coseno máxima para considerar que dos rostros son la misma
+# persona. Más bajo = más estricto. 0.593 es el umbral que DeepFace usa
+# para SFace con coseno; calibrar con rostros reales del equipo.
+RECONOCIMIENTO_UMBRAL = 0.593
+
+# Fotogramas válidos que se intentan antes de darse por vencido.
+RECONOCIMIENTO_INTENTOS = 3
+
+# --- Pantallas del flujo facial ---
+TIEMPO_PANTALLA_PREPARANDO = 2    # "Colóquese frente a la cámara"
+TIEMPO_PANTALLA_FALLO_CAMARA = 4  # "La cámara no responde"
+
+# --- Enrolamiento facial (modo administración) ---
+# Nombre del rol que puede dar de alta usuarios. Debe coincidir con el
+# valor de la columna roles.nombre, tal como lo inserta schema.sql.
+# Los permisos NO se deducen del nombre del rol: cada rol declara sus
+# capacidades en la tabla roles (acceso_permitido, puede_gestionar,
+# puede_consultar) y el código pregunta por ellas. Renombrar un rol en
+# la base no debe cambiar lo que puede hacer nadie (PIC-78).
+#
+# Los tres roles son: usuario, admin, soporte. Se siembran en
+# database/schema.sql, no aquí.
+
+# Muestras faciales válidas que se piden por usuario.
+ENROLAMIENTO_MUESTRAS = 5
+
+# Fotogramas que se intentan por muestra antes de avisar que no se
+# detecta ningún rostro.
+ENROLAMIENTO_INTENTOS_POR_MUESTRA = 10
+
+# Largo máximo del nombre; usuarios.nombre es VARCHAR(100).
+ENROLAMIENTO_NOMBRE_MAX = 100
+
+# --- Audio (bocina USB Jabra Link 370) ---
+# Los .wav viven en sounds/, en la raíz del repositorio.
+_RAIZ_REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+AUDIO_EXITO = os.path.join(_RAIZ_REPO, "sounds", "exito.wav")
+AUDIO_ERROR = os.path.join(_RAIZ_REPO, "sounds", "error.wav")
+AUDIO_FALLO = os.path.join(_RAIZ_REPO, "sounds", "fallo.wav")
+
+# Nombre (o parte del nombre) de la bocina tal como aparece en
+# /proc/asound/cards o en `aplay -l`. Se busca por nombre porque el
+# número de tarjeta cambia al reiniciar o al conectar otro USB: con
+# "plughw:3,0" fijo, el audio dejaba de sonar sin avisar (PIC-82).
+AUDIO_TARJETA = "Jabra"
+
+# Dispositivo ALSA fijo para aplay -D, por ejemplo
+# "plughw:CARD=Link370,DEV=0". None = buscar la tarjeta por AUDIO_TARJETA.
+# En cualquier caso, si ese dispositivo falla se intenta con "default".
+AUDIO_DEVICE = None

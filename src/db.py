@@ -11,8 +11,11 @@ from mysql.connector import Error
 
 from config import TIEMPO_ESPERA_BD
 
+# Las capacidades viajan con el usuario para que nadie tenga que
+# deducir permisos del nombre del rol (PIC-78).
 _SELECT_USUARIO = (
-    "SELECT u.id, u.nombre, r.nombre AS rol, r.acceso_permitido "
+    "SELECT u.id, u.nombre, u.activo, r.nombre AS rol, "
+    "       r.acceso_permitido, r.puede_gestionar, r.puede_consultar "
     "FROM usuarios u JOIN roles r ON u.rol_id = r.id "
 )
 
@@ -102,6 +105,137 @@ def registrar_intento(usuario_id, metodo, resultado):
             cursor.close()
         conexion.close()
 
+def obtener_roles():
+    """
+    Devuelve [{id, nombre, descripcion, acceso_permitido,
+    puede_gestionar, puede_consultar}] para llenar el selector de rol
+    del alta. "ERROR_CONEXION" si la base de datos falla.
+    """
+    try:
+        conexion = conectar()
+    except Error as e:
+        print("Error de conexión a BD:", e)
+        return "ERROR_CONEXION"
+
+    cursor = None
+    try:
+        cursor = conexion.cursor(dictionary=True)
+        cursor.execute(
+            "SELECT id, nombre, descripcion, acceso_permitido, "
+            "       puede_gestionar, puede_consultar "
+            "FROM roles ORDER BY nombre"
+        )
+        return cursor.fetchall()
+    except Error as e:
+        print("Error al leer los roles:", e)
+        return "ERROR_CONEXION"
+    finally:
+        if cursor:
+            cursor.close()
+        conexion.close()
+
+
+def crear_usuario(nombre, credencial, rol_id):
+    """
+    Da de alta un usuario. La credencial se guarda hasheada con SHA2,
+    igual que la compara _SELECT_USUARIO.
+
+    Devuelve el id del usuario nuevo, "CLAVE_DUPLICADA" si esa clave ya
+    la tiene alguien (credencial_hash es UNIQUE) o "ERROR_CONEXION".
+    """
+    try:
+        conexion = conectar()
+    except Error as e:
+        print("No se pudo crear el usuario (fallo de conexión):", e)
+        return "ERROR_CONEXION"
+
+    cursor = None
+    try:
+        cursor = conexion.cursor()
+        cursor.execute(
+            "INSERT INTO usuarios (nombre, credencial_hash, rol_id) "
+            "VALUES (%s, SHA2(%s, 256), %s)",
+            (nombre, credencial, rol_id)
+        )
+        conexion.commit()
+        return cursor.lastrowid
+    except Error as e:
+        # 1062 = Duplicate entry para una clave única.
+        if getattr(e, "errno", None) == 1062:
+            print("La clave ya está en uso por otro usuario.")
+            return "CLAVE_DUPLICADA"
+        print("Error al crear el usuario:", e)
+        return "ERROR_CONEXION"
+    finally:
+        if cursor:
+            cursor.close()
+        conexion.close()
+
+
+def eliminar_usuario(usuario_id):
+    """
+    Borra un usuario. Sus datos biométricos se van con él por el
+    ON DELETE CASCADE de datos_biometricos (FR-14).
+
+    Se usa para deshacer un alta a medias: si el usuario ya se creó y
+    después falla el guardado de las plantillas, no debe quedar un
+    usuario sin rostro que además ocupa una clave.
+    """
+    try:
+        conexion = conectar()
+    except Error as e:
+        print("No se pudo eliminar el usuario (fallo de conexión):", e)
+        return False
+
+    cursor = None
+    try:
+        cursor = conexion.cursor()
+        cursor.execute("DELETE FROM usuarios WHERE id = %s", (usuario_id,))
+        conexion.commit()
+        return True
+    except Error as e:
+        print("Error al eliminar el usuario:", e)
+        return False
+    finally:
+        if cursor:
+            cursor.close()
+        conexion.close()
+
+def obtener_usuarios():
+    """
+    Lista los usuarios para la pantalla de gestión.
+
+    Devuelve [{id, nombre, activo, rol, muestras}] donde `muestras` es cuántas
+    plantillas faciales tiene cargadas: 0 significa que todavía no está
+    enrolado. "ERROR_CONEXION" si la base de datos falla.
+    """
+    try:
+        conexion = conectar()
+    except Error as e:
+        print("Error de conexión a BD:", e)
+        return "ERROR_CONEXION"
+
+    cursor = None
+    try:
+        cursor = conexion.cursor(dictionary=True)
+        cursor.execute(
+            "SELECT u.id, u.nombre, u.activo, r.nombre AS rol, "
+            "       COUNT(b.id) AS muestras "
+            "FROM usuarios u "
+            "JOIN roles r ON u.rol_id = r.id "
+            "LEFT JOIN datos_biometricos b ON b.usuario_id = u.id "
+            "GROUP BY u.id, u.nombre, u.activo, r.nombre "
+            "ORDER BY u.nombre"
+        )
+        return cursor.fetchall()
+    except Error as e:
+        print("Error al listar los usuarios:", e)
+        return "ERROR_CONEXION"
+    finally:
+        if cursor:
+            cursor.close()
+        conexion.close()
+
 
 def guardar_biometria(usuario_id, embedding, modelo, tipo="facial"):
     """Guarda una muestra biométrica (bytes) de un usuario."""
@@ -123,6 +257,54 @@ def guardar_biometria(usuario_id, embedding, modelo, tipo="facial"):
         return True
     except Error as e:
         print("Error al guardar la biometría:", e)
+        return False
+    finally:
+        if cursor:
+            cursor.close()
+        conexion.close()
+
+
+def reemplazar_biometria(usuario_id, embeddings, modelo, tipo="facial"):
+    """
+    Sustituye las plantillas de un usuario por `embeddings` (lista de
+    bytes) en una sola transacción: borra las que tenía de ese tipo y
+    guarda las nuevas. Si algo falla se deshace todo y el usuario conserva
+    las anteriores; nunca se queda sin rostro a medias.
+
+    Se usa al volver a enrolar a alguien que ya existe (PIC-80).
+    Devuelve True si se guardó todo, False si no.
+    """
+    if not embeddings:
+        return False
+
+    try:
+        conexion = conectar()
+    except Error as e:
+        print("No se pudo reemplazar la biometría (fallo de conexión):", e)
+        return False
+
+    cursor = None
+    try:
+        # autocommit está apagado: el DELETE y los INSERT van en la misma
+        # transacción hasta el commit.
+        cursor = conexion.cursor()
+        cursor.execute(
+            "DELETE FROM datos_biometricos WHERE usuario_id = %s AND tipo = %s",
+            (usuario_id, tipo)
+        )
+        cursor.executemany(
+            "INSERT INTO datos_biometricos (usuario_id, tipo, embedding, modelo) "
+            "VALUES (%s, %s, %s, %s)",
+            [(usuario_id, tipo, embedding, modelo) for embedding in embeddings]
+        )
+        conexion.commit()
+        return True
+    except Error as e:
+        print("Error al reemplazar la biometría; se conservan las anteriores:", e)
+        try:
+            conexion.rollback()
+        except Error:
+            pass
         return False
     finally:
         if cursor:
@@ -154,31 +336,6 @@ def obtener_biometria(usuario_id=None):
     except Error as e:
         print("Error al leer la biometría:", e)
         return "ERROR_CONEXION"
-    finally:
-        if cursor:
-            cursor.close()
-        conexion.close()
-
-
-def eliminar_biometria(usuario_id):
-    """Borra todas las muestras biométricas de un usuario."""
-    try:
-        conexion = conectar()
-    except Error as e:
-        print("No se pudo borrar la biometría (fallo de conexión):", e)
-        return False
-
-    cursor = None
-    try:
-        cursor = conexion.cursor()
-        cursor.execute(
-            "DELETE FROM datos_biometricos WHERE usuario_id = %s", (usuario_id,)
-        )
-        conexion.commit()
-        return True
-    except Error as e:
-        print("Error al borrar la biometría:", e)
-        return False
     finally:
         if cursor:
             cursor.close()
