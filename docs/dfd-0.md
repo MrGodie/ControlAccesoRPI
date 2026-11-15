@@ -1,25 +1,18 @@
 ```mermaid
 flowchart LR
     U[User]
+    APP[Mobile app<br/>user's phone]
     A[Administrator]
-    CAM[Camera]
-    DB[(Local MySQL database)]
-    S((Access Control System v1.0))
+    S((Access Control<br/>System<br/>Raspberry Pi))
 
-    U -->|Presence via PIR| S
-    U -->|Face presented to camera| CAM
-    CAM -->|Image frames| S
-    U -->|Code and PIN via GUI or buttons: fallback| S
+    U -->|Presence, face, ID and PIN via GUI or buttons| S
+    S -->|Screen message, LED, audio, door opening| U
 
-    S -->|Screen message: granted / denied / unknown face / system error| U
-    S -->|Success or denial audio| U
-    S -->|Actuator activation| U
+    U -->|ID, PIN, request tap| APP
+    APP -->|Identify and access request: HTTP / JSON| S
+    S -->|Presence status and result| APP
+    APP -->|Authorized / denied / technical error| U
 
-    A -->|Register users, roles, PIN and facial enrollment| S
-    S -->|Enrollment confirmation| A
-    A -->|Query access logs| DB
-
-    S -->|Query user, role, permissions and face embeddings| DB
-    DB -->|User data or connection failure| S
-    S -->|Store embeddings and log: user, method, result, timestamp| DB
+    A -->|User data, role, PIN, face samples| S
+    S -->|Enrollment confirmation, user list| A
 ```
