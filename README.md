@@ -86,6 +86,37 @@ The system implements a modular architecture under the src/ directory to guarant
 *   *exit.py*: Actuation and output driver. Controls Pulse Width Modulation (PWM) duty cycles for servo-based locking mechanisms and triggers digital buzzers for acoustic signaling.
 *   *config.py*: Centralized configuration repository defining pin mappings, temporal constants, and system parameters without modifying business logic (FR-04).
 
+## Mobile App
+
+Integrativo 4 adds a mobile application as a new way to request access. It is meant for users only and works alongside the existing access methods (physical buttons, graphical interface and facial recognition), which keep working unchanged (NFR-10).
+
+*   *Identification:* the user identifies themselves in the app with their user code and password (FR-15).
+*   *Presence-enabled request:* the access request is enabled only while the Raspberry Pi reports that the PIR sensor detected presence. Presence enables the request; it never authorizes access by itself (FR-16).
+*   *Result in the app:* the app shows whether access was authorized, denied, or could not be completed due to a technical condition. A technical failure is never shown as a denial (FR-17, FR-18, NFR-11).
+*   *Return to the start:* when the operation ends, the app clears the entered data and returns to its initial state (FR-19).
+*   *Same validation logic:* requests from the app are authorized by the same validation used by the other access methods; there is no separate authorization path for the app (FR-20).
+*   *No administrative functions:* the app does not register users, change permissions, manage accounts, or configure the system (NFR-09).
+
+The requirements are listed in `requirements.md` (FR-15 to FR-20, NFR-09 to NFR-11) and the screens in `docs/Interface_5.png` and `docs/Interface_6.png`.
+
+**Status:** not implemented yet. The technology stack is still under review (PIC-102).
+
+### Installation
+
+What is known so far:
+
+*   The app runs on the user's phone and sends its requests to the Raspberry Pi that runs this system, so the Raspberry Pi must be running and reachable from the phone.
+*   No administrator setup is done from the app; users and permissions are still managed on the Raspberry Pi.
+
+Steps that depend on the technology stack:
+
+| Step | Status |
+| :--- | :--- |
+| Platform and SDK | Pending PIC-102 |
+| Build | Pending PIC-102 |
+| Deployment to the phone | Pending PIC-102 |
+| Connecting the app to the Raspberry Pi | Pending PIC-102 |
+
 ## Project Structure
 
 ```
@@ -93,8 +124,14 @@ ControlAccesoRPI/
 ├── README.md
 ├── requirements.md
 ├── traceability.md
+├── setup_audio.sh
 ├── docs/
 │   ├── Interface.png
+│   ├── Interface_2.png
+│   ├── Interface_3.png
+│   ├── Interface_4.png
+│   ├── Interface_5.png
+│   ├── Interface_6.png
 │   ├── bpmn-process.md
 │   ├── data.md
 │   ├── dfd-0.md
@@ -102,12 +139,22 @@ ControlAccesoRPI/
 │   ├── flow.md
 │   ├── sequence.md
 │   ├── states.md
+│   ├── system_architecture.md
 │   └── system_flowchart.md
+├── sounds/
+│   ├── error.wav
+│   ├── exito.wav
+│   └── fallo.wav
+├── tools/
+│   └── generate_mobile_wireframes.py
 └── src/
+    ├── camera.py
     ├── config.py
     ├── controller.py
     ├── db.py
+    ├── enrollment.py
     ├── exit.py
+    ├── face.py
     ├── gpio_handler.py
     ├── gui.py
     ├── validator.py
