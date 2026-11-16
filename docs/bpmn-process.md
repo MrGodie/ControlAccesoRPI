@@ -1,40 +1,51 @@
-``` mermaid
-flowchart TB
-    S([Start]) --> PIR[PIR detects presence]
-    PIR --> C{Camera and GUI available?}
-    C -- No --> BTN[Fallback: PIN via buttons]
-    C -- Yes --> CAM[Capture frame]
-    CAM --> F{Face detected?}
-    F -- No --> R{Retries left?}
-    R -- Yes --> CAM
-    R -- No --> DENY
-    F -- Yes --> REC[Local recognition: match against stored embeddings]
-    REC --> K{Known face?}
-    K -- No, unknown face --> DENY
-    K -- Yes --> PERM
-    BTN --> PERM[Query user role and permissions in DB]
-    PERM --> A{Authorized?}
-    A -- Yes --> GRANT[Grant access: actuator + audio]
-    A -- No --> DENY[Deny access: show message]
-    GRANT --> LOG
-    DENY --> LOG[Log event: user, method, result, timestamp]
-    LOG --> REL[Release camera, return to idle]
-    REL --> E([End])
+```mermaid
+flowchart LR
+    subgraph L1["User"]
+        S([Start]) --> ID[Enter ID and PIN]
+        TAP[Tap Request access]
+        SEE[See result]
+    end
 
-    ADM[Admin registers user: name and role] --> NEW[Create user in DB]
-    NEW --> CAP[Guided capture of multiple face samples]
-    CAP --> V{Enough valid samples?}
-    V -- No --> CAP
-    V -- Yes --> SAVE[Store embeddings locally, linked to user]
-    SAVE --> OK[Show enrollment confirmation]
-    OK --> REL
+    subgraph L2["Mobile app"]
+        REG{Registered user?}
+        WAIT[Wait for presence<br/>button disabled]
+        SEND[Send request to the Raspberry Pi]
+        NET{Answer received?}
+        SHOW[Show authorized / denied]
+        TECH[Show: operation could not be completed]
+        RST[Return to initial state]
+    end
+
+    subgraph L3["Raspberry Pi"]
+        PIR[PIR detects presence]
+        VAL[[Shared validation<br/>validator.py]]
+        RES{Result}
+        OK[Green LED, motor, success audio]
+        NO[Red LED, denial audio]
+        ERR[Red blink, failure audio]
+        LOG[Log attempt, method = app]
+        OTHER[/Face, GUI, buttons/] -.-> VAL
+    end
+
+    ID --> REG
+    REG -- No --> ID
+    REG -- Yes --> WAIT
+    PIR --> WAIT
+    WAIT -->|presence = true| TAP
+    TAP --> SEND --> VAL --> RES
+    RES -- Authorized --> OK --> LOG
+    RES -- Denied --> NO --> LOG
+    RES -- DB failure --> ERR --> LOG
+    LOG --> NET
+    SEND -.->|timeout| NET
+    NET -- Yes --> SHOW --> SEE
+    NET -- No --> TECH --> SEE
+    SEE --> RST --> E([End])
 
     classDef ok fill:#E4F3DE,stroke:#548235,color:#375623;
     classDef bad fill:#FBE2E1,stroke:#C0504D,color:#7A2E2C;
-    classDef alt fill:#FDEBD3,stroke:#C87F0A,color:#7A4A05;
-    classDef face fill:#EADCF8,stroke:#7030A0,color:#44205F;
-    class GRANT,OK ok;
-    class DENY bad;
-    class BTN alt;
-    class CAM,REC,CAP,SAVE face;
-    ```
+    classDef app fill:#DDEBF7,stroke:#1F4E79,color:#1F3864;
+    class OK ok;
+    class NO,ERR,TECH bad;
+    class SEND,WAIT app;
+```
