@@ -27,6 +27,18 @@ FR-12. The system shall acquire images or video stably from a camera connected t
 FR-13. The system shall provide a guided facial enrollment flow through which an administrator registers a new user: entering the user's information, capturing multiple valid facial samples through the live camera, and receiving an on-screen confirmation when the enrollment is completed successfully.
 
 FR-14. The system shall store the biometric representation (facial template) of each enrolled user in the local database, associated with that user and with their permissions, such that deleting the user also deletes their biometric data.
+
+FR-15. The system shall allow a user to identify themselves from the mobile application by entering their user identifier and credential. When the identification is not valid, the application shall inform the user without revealing which of the two fields was wrong.
+
+FR-16. The mobile application shall enable the access request only while the Raspberry Pi reports that the PIR sensor has detected presence at the access point. Presence detection only enables the request; it shall never authorize access by itself.
+
+FR-17. The system shall allow an identified user to send an access request from the mobile application and shall return the result of that request to the application. An authorized request shall trigger the same audible and physical responses as the other identification methods (FR-10), and every request shall be logged with the mobile application as its interaction method (FR-09).
+
+FR-18. The mobile application shall distinguish between access authorized, access denied (insufficient permissions or unrecognized credentials), and access that could not be completed due to a technical condition.
+
+FR-19. The mobile application shall return to its initial state once the operation ends, clearing the identification data entered for that attempt.
+
+FR-20. The system shall authorize requests coming from the mobile application with the same validation logic used by the existing access methods (physical buttons, graphical interface and facial recognition), without a separate or parallel authorization path for the application.
  
 
 
@@ -47,3 +59,9 @@ NFR-06. Credentials, passwords, or database connection secrets shall not be stor
 NFR-07. Facial detection, facial identification, biometric storage and the access decision shall run entirely on the local system, without using external or cloud-based recognition services.
 
 NFR-08. The system shall store only the biometric template of each user in the database and shall not persist the captured face images.
+
+NFR-09. The mobile application shall not include administrative functions: it shall not register users, modify permissions, manage accounts, or configure the system.
+
+NFR-10. Adding the mobile application shall not change the behavior of the existing access methods (physical buttons, graphical interface and facial recognition), which shall keep working as before.
+
+NFR-11. A technical failure during a mobile access request (database connection failure, Raspberry Pi unreachable, or no response within the expected time) shall never be shown in the application or logged as "access denied"; it shall be reported as a distinct condition, as required by NFR-04.
