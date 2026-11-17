@@ -56,6 +56,12 @@ TIEMPO_PANTALLA_FALLO = 4
 # acceso (FR-16). La presencia solo habilita la solicitud; no autoriza.
 VENTANA_PRESENCIA_APP = 30
 
+# API HTTP que atiende a la app (src/api_server.py). Con API_ACTIVA en
+# False el sistema arranca sin ella y los demás medios no cambian.
+API_ACTIVA = True
+API_HOST = "0.0.0.0"            # todas las interfaces: el teléfono entra por la red local
+API_PUERTO = 8000
+
 # --- Camera (facial recognition subsystem) ---
 # "opencv": USB webcam or video file | "picamera2": Raspberry Pi camera module
 CAMARA_BACKEND = "opencv"

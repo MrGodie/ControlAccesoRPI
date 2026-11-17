@@ -19,6 +19,7 @@ import time
 import traceback
 
 from config import (
+    API_ACTIVA,
     LONGITUD_CLAVE,
     RECONOCIMIENTO_ACTIVO,
     TIEMPO_ESPERA_PRESENCIA,
@@ -28,6 +29,7 @@ from config import (
     TIEMPO_PANTALLA_FALLO_CAMARA,
     TIEMPO_PANTALLA_PREPARANDO,
 )
+import api_server
 import camera
 import enrollment
 import face
@@ -398,6 +400,13 @@ def main():
             else:
                 print(f"Plantillas biométricas cargadas: {cargadas}")
 
+        # La API de la app móvil es opcional, igual que la cámara: si no
+        # puede levantar, la GUI, los botones y el rostro siguen activos.
+        if API_ACTIVA:
+            api_server.iniciar(procesar_resultado)
+        else:
+            print("API de la app móvil desactivada por configuración.")
+
         interfaz = gui.crear_interfaz() if gui.gui_disponible() else None
 
         if interfaz is not None:
@@ -417,6 +426,7 @@ def main():
 
     finally:
         detener.set()
+        api_server.detener()     # antes de limpiar el GPIO: ya no entran solicitudes
         camera.liberar_camara()
         gpio_handler.limpiar()
 
