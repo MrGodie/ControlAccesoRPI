@@ -3,33 +3,46 @@ classDiagram
     direction LR
 
     class IdentificationActivity {
-        -manager: AccessManager
-        +onIdentifyClicked()
-        +showError(message: String)
+        -onIdentifyClicked()
+        -showError(message: String?)
+        -askServerAddress()
     }
     class RequestActivity {
-        -manager: AccessManager
-        +onPresenceChanged(present: Boolean)
-        +onRequestClicked()
+        -watchPresence()
+        -onPresenceChanged(status: PresenceStatus)
+        -onRequestClicked()
     }
     class ResultActivity {
-        +showResult(result: AccessResult)
-        +onTimeout()
+        -showResult(result: AccessResult)
+    }
+
+    class AccessApp {
+        +settings: ServerSettings
+        +manager: AccessManager
+        +changeServerAddress(address: String)
+    }
+
+    class ServerSettings {
+        +address: String
+        +normalize(text: String)$ String
     }
 
     class AccessManager {
         -client: RaspberryClient
-        -currentUser: User?
-        -state: AppState
-        +identify(userId: Int, pin: String) Boolean
-        +watchPresence(onChange: (Boolean) -> Unit)
+        +state: AppState
+        +currentUser: User?
+        +lastResult: AccessResult?
+        +identify(userId: String, pin: String) IdentifyOutcome
+        +checkPresence() PresenceStatus
+        +canRequestAccess() Boolean
         +requestAccess() AccessResult
         +reset()
     }
 
     class RaspberryClient {
         -baseUrl: String
-        -timeoutMs: Int
+        -connectTimeoutMs: Int
+        -readTimeoutMs: Int
         +identify(user: User) String?
         +getPresence() Boolean
         +sendRequest(request: AccessRequest) AccessResult
@@ -40,21 +53,23 @@ classDiagram
         -pin: String
         +name: String?
         +isValidFormat() Boolean
+        +withName(name: String) User
+        +newAccessRequest() AccessRequest
+        +fromInput(idText: String, pinText: String)$ User?
     }
 
     class AccessRequest {
         +userId: Int
-        +pin: String
-        +method: String = "app"
+        -pin: String
         +toJson() String
     }
 
     class AccessResult {
         +status: ResultStatus
         +userName: String?
-        +message: String
         +isAuthorized() Boolean
         +fromJson(json: String)$ AccessResult
+        +connectionError()$ AccessResult
     }
 
     class ResultStatus {
@@ -64,6 +79,9 @@ classDiagram
         DENIED_NOT_RECOGNIZED
         SYSTEM_ERROR
         CONNECTION_ERROR
+        +isDenied: Boolean
+        +isTechnicalFailure: Boolean
+        +fromApi(value: String?)$ ResultStatus
     }
 
     class AppState {
@@ -75,15 +93,37 @@ classDiagram
         SHOWING_RESULT
     }
 
-    IdentificationActivity --> AccessManager : uses
-    RequestActivity --> AccessManager : uses
+    class IdentifyOutcome {
+        <<enumeration>>
+        IDENTIFIED
+        INVALID_FORMAT
+        NOT_RECOGNIZED
+        CONNECTION_ERROR
+    }
+
+    class PresenceStatus {
+        <<enumeration>>
+        PRESENT
+        ABSENT
+        UNREACHABLE
+    }
+
+    IdentificationActivity --> AccessApp : uses
+    RequestActivity --> AccessApp : uses
+    ResultActivity --> AccessApp : uses
     ResultActivity ..> AccessResult : displays
+
+    AccessApp "1" *-- "1" AccessManager
+    AccessApp "1" *-- "1" ServerSettings
 
     AccessManager "1" *-- "1" RaspberryClient
     AccessManager "1" --> "0..1" User : currentUser
+    AccessManager "1" --> "0..1" AccessResult : lastResult
     AccessManager --> AppState
-    AccessManager ..> AccessRequest : creates
+    AccessManager ..> IdentifyOutcome : returns
+    AccessManager ..> PresenceStatus : returns
 
+    User ..> AccessRequest : creates
     RaspberryClient ..> AccessRequest : sends
     RaspberryClient ..> AccessResult : returns
     AccessResult --> ResultStatus

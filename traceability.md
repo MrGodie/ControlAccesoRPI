@@ -30,12 +30,12 @@ Jira project: **PIC** (ControlAccesoRPI) · Repository: `MrGodie/ControlAccesoRP
 | **FR-12** Acquire images, detect and identify a face, then authorize accordingly | PIC-14, PIC-19, PIC-16, PIC-17, PIC-59, PIC-68, PIC-71, PIC-72, PIC-73 | #75, #82, #84, #85, #86, #90 | Pending — implemented (`src/face.py` identifies against the stored templates; `controller.intento_facial` authorizes through `validator.verificar_rostro`), no recorded verification |
 | **FR-13** Guided facial enrollment flow for the administrator | PIC-12, PIC-15, PIC-61, PIC-70, PIC-71, PIC-75, PIC-80 | #73, #83, #84, #88, #94 | Pending — flow implemented in `src/enrollment.py` (new users, and existing users since #94), no recorded verification |
 | **FR-14** Store the facial template with the user, deleted along with the user | PIC-9, PIC-10, PIC-11, PIC-74, PIC-77 | #70, #71, #87, #89 | Pending — `ON DELETE CASCADE` is declared in `schema.sql` and `migration.sql`; cascade delete not verified |
-| **FR-15** Identify the user from the mobile application | PIC-105 | — | Pending — mobile application not implemented (stack under review, PIC-102) |
-| **FR-16** Enable the mobile access request only after the PIR detects presence | PIC-105 | — | Pending — mobile application not implemented |
-| **FR-17** Send the access request from the app and receive the result there | PIC-105 | — | Pending — mobile application not implemented |
-| **FR-18** App distinguishes authorized / denied / not completed for a technical condition | PIC-105 | — | Pending — mobile application not implemented |
-| **FR-19** App returns to its initial state when the operation ends | PIC-105 | — | Pending — mobile application not implemented |
-| **FR-20** Same validation logic for the app as for the existing access methods | PIC-105 | — | Pending — mobile application not implemented |
+| **FR-15** Identify the user from the mobile application | PIC-105, PIC-97, PIC-102, PIC-100, PIC-88 | #104, #105, #106, #107 | Automated on a PC (`/api/login` over HTTP; `AccessManagerTest`, `ScreensTest`): a wrong code and a wrong key give the same answer; pending on the real Raspberry Pi and on a phone (PIC-107) |
+| **FR-16** Enable the mobile access request only after the PIR detects presence | PIC-105, PIC-97, PIC-100, PIC-89 | #102, #104, #106, #107 | Automated on a PC with a simulated PIR (`presencia_reciente()`; request button disabled without presence in `ScreensTest`); pending on the real Raspberry Pi and on a phone (PIC-107) |
+| **FR-17** Send the access request from the app and receive the result there | PIC-105, PIC-97, PIC-100, PIC-89 | #103, #104, #106, #107 | Automated on a PC: the Kotlin client against the Python API with simulated hardware (authorized request moves the motor and is logged as `app`); pending on the real Raspberry Pi and on a phone (PIC-107) |
+| **FR-18** App distinguishes authorized / denied / not completed for a technical condition | PIC-105, PIC-100, PIC-89 | #106, #107 | Automated on a PC (`ModelTest`, `RaspberryClientTest`, `ScreensTest`); pending on the real Raspberry Pi and on a phone (PIC-107) |
+| **FR-19** App returns to its initial state when the operation ends | PIC-105, PIC-100, PIC-89 | #106, #107 | Automated on a PC (`AccessManager.reset()`; result view closes by itself and the form comes back empty in `ScreensTest`); pending on a phone (PIC-107) |
+| **FR-20** Same validation logic for the app as for the existing access methods | PIC-105, PIC-97 | #104 | By inspection: `src/api_server.py` calls `validator.verificar_usuario()` and has no permission check of its own; Automated on a PC with the real `validator` and `controller` |
 
 ## 2. Non-functional requirements
 
@@ -49,9 +49,9 @@ Jira project: **PIC** (ControlAccesoRPI) · Repository: `MrGodie/ControlAccesoRP
 | **NFR-06** No credentials or secrets in plain text in the repository | PIC-48 | #51 | Pending — no automated check in CI |
 | **NFR-07** Detection, identification, storage and decision run entirely locally | PIC-14, PIC-19, PIC-68 | #75, #82 | Pending — `src/face.py` runs DeepFace on the Raspberry Pi (the model weights are downloaded once); not verified |
 | **NFR-08** Store only the biometric template, never the captured images | PIC-11, PIC-19, PIC-70 | #70, #75, #83 | Pending — the access and enrollment flows write no image to disk (only the manual `camera.py` self-test saves a frame, when run with `--guardar`); not verified |
-| **NFR-09** The mobile application has no administrative functions | PIC-105 | — | Pending — mobile application not implemented |
-| **NFR-10** The existing access methods keep working unchanged | PIC-105 | — | Pending — mobile application not implemented |
-| **NFR-11** A technical failure in the app is never reported or logged as "access denied" | PIC-105 | — | Pending — mobile application not implemented |
+| **NFR-09** The mobile application has no administrative functions | PIC-105, PIC-97, PIC-89 | #104, #107 | By inspection: three views and three API routes; any other route answers 404 (Automated on a PC) |
+| **NFR-10** The existing access methods keep working unchanged | PIC-105, PIC-97, PIC-107 | #102, #103, #104 | Automated on a PC: `procesar_resultado()` runs the same outputs in the same order for each result; the system starts when the API cannot. Pending on the prototype: one access by GUI, buttons and face (PIC-107) |
+| **NFR-11** A technical failure in the app is never reported or logged as "access denied" | PIC-105, PIC-97, PIC-100, PIC-89 | #104, #106, #107 | Automated on a PC: database down, Raspberry Pi unreachable, no answer in time and unknown answers are reported as a technical failure; pending on the real Raspberry Pi and on a phone (PIC-107) |
 
 ## 3. Design and documentation artifacts
 
@@ -79,9 +79,11 @@ Open items that keep requirements from being fully traceable:
   `enrollment.py` (#83) are merged, so FR-12, FR-13, NFR-07 and NFR-08 are
   implemented; none of them has a recorded verification yet.
 - **README not yet updated** for this version (PIC-63).
-- **Mobile application not implemented.** FR-15 to FR-20 and NFR-09 to NFR-11
-  (Integrativo 4) have no implementation yet; the technology stack is still under
-  review (PIC-102).
+- **Mobile application implemented but not verified on the device.** FR-15 to
+  FR-20 and NFR-09 to NFR-11 (Integrativo 4) are implemented (#102 to #107) and
+  tested on a PC with simulated hardware. None of them has a recorded run on the
+  real Raspberry Pi or on a phone yet; `docs/verification_checklist.md` (PIC-107)
+  lists what has to be shown.
 
 ---
 
