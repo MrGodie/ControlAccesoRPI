@@ -50,6 +50,12 @@ TIEMPO_PANTALLA_AUTORIZADO = 5
 TIEMPO_PANTALLA_DENEGADO = 4
 TIEMPO_PANTALLA_FALLO = 4
 
+# --- Aplicación móvil ---
+# Segundos que la presencia sigue contando como reciente después de la
+# última lectura en alto del PIR. Mientras dure, la app puede solicitar
+# acceso (FR-16). La presencia solo habilita la solicitud; no autoriza.
+VENTANA_PRESENCIA_APP = 30
+
 # --- Camera (facial recognition subsystem) ---
 # "opencv": USB webcam or video file | "picamera2": Raspberry Pi camera module
 CAMARA_BACKEND = "opencv"
