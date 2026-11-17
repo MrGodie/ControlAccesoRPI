@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand">#1F3A5F</color>
+    <color name="on_brand">#FFFFFF</color>
+
+    <!-- Result view: one color per kind of outcome (FR-18). -->
+    <color name="result_authorized">#1B7F3B</color>
+    <color name="result_denied">#B3261E</color>
+    <color name="result_failed">#8A5A00</color>
+    <color name="on_result">#FFFFFF</color>
+</resources>

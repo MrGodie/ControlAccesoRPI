@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Control de Acceso</string>
+    <string name="cancel">Cancelar</string>
+
+    <!-- View 1: identification -->
+    <string name="identify_subtitle">Identifícate para solicitar acceso</string>
+    <string name="identify_id_hint">Código de usuario</string>
+    <string name="identify_pin_hint">Clave</string>
+    <string name="identify_button">Identificarme</string>
+    <string name="identify_invalid_format">Escribe tu código y tu clave. Solo se aceptan números.</string>
+    <string name="identify_not_recognized">Código o clave incorrectos.</string>
+    <string name="identify_connection_error">No se pudo conectar con el punto de acceso. No es un problema con tu código ni con tu clave; inténtalo de nuevo.</string>
+
+    <string name="connection_button">Conexión</string>
+    <string name="connection_title">Dirección del punto de acceso</string>
+    <string name="connection_message">Dirección de la Raspberry Pi en la red local. Ejemplo: 192.168.1.50:8000</string>
+    <string name="connection_save">Guardar</string>
+
+    <!-- View 2: access request -->
+    <string name="request_greeting">Hola, %1$s</string>
+    <string name="request_greeting_no_name">Hola</string>
+    <string name="request_waiting_presence">Acércate al punto de acceso.\nEsperando a que el sensor detecte tu presencia…</string>
+    <string name="request_presence_detected">Presencia detectada.\nYa puedes solicitar acceso.</string>
+    <string name="request_unreachable">Sin conexión con el punto de acceso.\nReintentando…</string>
+    <string name="request_sending">Enviando solicitud…</string>
+    <string name="request_button">Solicitar acceso</string>
+    <string name="request_presence_note">La presencia solo habilita la solicitud. El sistema decide si el acceso se autoriza.</string>
+
+    <!-- View 3: result -->
+    <string name="result_authorized_title">Acceso autorizado</string>
+    <string name="result_authorized_detail">Bienvenido, %1$s.</string>
+    <string name="result_authorized_detail_no_name">Bienvenido.</string>
+    <string name="result_denied_title">Acceso rechazado</string>
+    <string name="result_denied_no_permission">No tienes permiso para acceder.</string>
+    <string name="result_denied_not_recognized">El código o la clave no fueron reconocidos.</string>
+    <string name="result_failed_title">No se pudo completar</string>
+    <string name="result_failed_system">El sistema tuvo un problema técnico. Tu acceso no fue rechazado; inténtalo de nuevo.</string>
+    <string name="result_failed_connection">No hubo respuesta del punto de acceso. Tu acceso no fue rechazado; revisa la conexión e inténtalo de nuevo.</string>
+    <string name="result_done">Terminar</string>
+</resources>
