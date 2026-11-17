@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS datos_biometricos (
 
 -- -----------------------------------------------------
 -- Tabla: intentos_acceso
--- metodo: 'gui' | 'botones' | 'facial'
+-- metodo: 'gui' | 'botones' | 'facial' | 'app'
 -- usuario_id es NULL cuando no se identifica a nadie
 -- (rostro o credencial no reconocidos, fallo del sistema).
 -- -----------------------------------------------------

@@ -11,12 +11,17 @@ import RPi.GPIO as GPIO
 
 from config import (
     BOTONES, LEDS, LED_VERDE, LED_ROJO, PIR, BOCINA, SERVO,
+    VENTANA_PRESENCIA_APP,
     TIEMPO_LED, TIEMPO_INDICADOR, TIEMPO_DEBOUNCE
 )
 
 pwm_servo = None  # se crea en inicializar()
 _hilo_botones = None
 _detener_botones = None
+
+# time.monotonic() de la última lectura en alto del PIR; None si todavía
+# no hubo ninguna. La escribe el ciclo de acceso y la lee la API.
+_ultima_presencia = None
 
 
 def inicializar():
@@ -93,8 +98,42 @@ def esperar_presencia(timeout=None):
             return False
         time.sleep(0.1)
 
+    _marcar_presencia()
     print("Presencia detectada")
     return True
+
+
+def _marcar_presencia():
+    global _ultima_presencia
+    _ultima_presencia = time.monotonic()
+
+
+def presencia_reciente(ventana=None):
+    """
+    Dice si hay presencia en el punto de acceso, sin bloquear.
+
+    Devuelve True si el PIR está en alto en este momento o si lo estuvo
+    dentro de los últimos `ventana` segundos (VENTANA_PRESENCIA_APP por
+    omisión). Es la consulta que usa la API de la app móvil (FR-16):
+    esperar_presencia() bloquea hasta 30 s y no sirve para responder una
+    petición HTTP.
+
+    El pin se lee aquí mismo porque el ciclo de acceso solo consulta el
+    PIR mientras está en reposo: durante la identificación o una sesión
+    de administración nadie más actualizaría la marca.
+
+    La presencia solo habilita la solicitud; nunca autoriza el acceso.
+    """
+    if ventana is None:
+        ventana = VENTANA_PRESENCIA_APP
+
+    if GPIO.input(PIR) == GPIO.HIGH:
+        _marcar_presencia()
+        return True
+
+    if _ultima_presencia is None:
+        return False
+    return (time.monotonic() - _ultima_presencia) < ventana
 
 
 def esperar_fin_presencia(timeout=10):
