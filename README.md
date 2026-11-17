@@ -99,23 +99,59 @@ Integrativo 4 adds a mobile application as a new way to request access. It is me
 
 The requirements are listed in `requirements.md` (FR-15 to FR-20, NFR-09 to NFR-11) and the screens in `docs/Interface_5.png` and `docs/Interface_6.png`.
 
-**Status:** not implemented yet. The technology stack is still under review (PIC-102).
+**Status:** implemented in Kotlin (`android/`), with the API on the Raspberry Pi in `src/api_server.py`. Tested on a PC; the run on the real Raspberry Pi and on a phone is tracked in `docs/verification_checklist.md` (PIC-107).
+
+### How it works
+
+The app is organized in three layers that do not mix:
+
+| Layer | Classes | Responsibility |
+| :--- | :--- | :--- |
+| Interface | `IdentificationActivity`, `RequestActivity`, `ResultActivity` | Show the three views and forward the taps |
+| Logic | `AccessManager` | Who is identified, whether the request is enabled, the last result |
+| Communication | `RaspberryClient` | HTTP requests to the Raspberry Pi, and nothing else |
+
+The Raspberry Pi serves three routes, on port 8000 by default (`API_PUERTO` in `src/config.py`):
+
+| Method | Route | Purpose |
+| :--- | :--- | :--- |
+| `POST` | `/api/login` | Identify the user (FR-15) |
+| `GET` | `/api/presence` | Has the PIR sensor detected presence? (FR-16) |
+| `POST` | `/api/access` | Request access and receive the result (FR-17, FR-18) |
+
+`/api/access` calls `validator.verificar_usuario()` and then `controller.procesar_resultado()`, the same functions the other access methods use. The API runs in its own thread next to the access cycle; if it cannot start, the system starts anyway and the other methods keep working.
 
 ### Installation
-
-What is known so far:
 
 *   The app runs on the user's phone and sends its requests to the Raspberry Pi that runs this system, so the Raspberry Pi must be running and reachable from the phone.
 *   No administrator setup is done from the app; users and permissions are still managed on the Raspberry Pi.
 
-Steps that depend on the technology stack:
-
-| Step | Status |
+| Step | How |
 | :--- | :--- |
-| Platform and SDK | Pending PIC-102 |
-| Build | Pending PIC-102 |
-| Deployment to the phone | Pending PIC-102 |
-| Connecting the app to the Raspberry Pi | Pending PIC-102 |
+| Platform and SDK | Android 8.0 or newer on the phone. To build: JDK 17 or newer and the Android SDK (platform 35, build-tools 35.0.0), or Android Studio |
+| Build | Open the `android/` folder in Android Studio, or run `./gradlew assembleDebug` inside it. The APK is written to `android/app/build/outputs/apk/debug/` |
+| Deployment to the phone | Run the app from Android Studio with the phone connected by USB, or copy `app-debug.apk` to the phone and install it |
+| Connecting the app to the Raspberry Pi | Phone and Raspberry Pi on the same network. In the first view, tap **Conexión** and type the address of the Raspberry Pi, for example `192.168.1.50:8000` |
+
+The API needs nothing new on the Raspberry Pi: it uses the Python standard library. It starts with the system (`python3 src/controller.py`) and can be turned off with `API_ACTIVA = False` in `src/config.py`.
+
+### Tests
+
+Inside `android/`:
+
+```
+./gradlew testDebugUnitTest
+```
+
+The tests run on the PC, without a phone: the logic and the HTTP client against a server that answers like the API, and the three views with Robolectric. To check a real Raspberry Pi from the PC:
+
+```
+RASPBERRY_URL=http://<pi-address>:8000 RASPBERRY_USER_ID=<id> RASPBERRY_PIN=<key> ./gradlew testDebugUnitTest --tests "*LiveRaspberryTest*"
+```
+
+### Known limitation
+
+The code and key travel over plain HTTP on the local network. They are stored hashed in the database, but they are not encrypted in transit. HTTPS or a session token is future work.
 
 ## Project Structure
 
@@ -147,7 +183,16 @@ ControlAccesoRPI/
 │   └── fallo.wav
 ├── tools/
 │   └── generate_mobile_wireframes.py
+├── android/                 (mobile app, Kotlin)
+│   └── app/src/
+│       ├── main/java/com/controlaccesorpi/mobile/
+│       │   ├── model/       (User, AccessRequest, AccessResult, ResultStatus, AppState)
+│       │   ├── network/     (RaspberryClient)
+│       │   ├── logic/       (AccessManager)
+│       │   └── ui/          (the three views)
+│       └── test/            (unit and screen tests)
 └── src/
+    ├── api_server.py
     ├── camera.py
     ├── config.py
     ├── controller.py

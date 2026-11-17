@@ -17,25 +17,31 @@ sequenceDiagram
     U->>UI: Enter user ID and PIN
     UI->>M: identify(id, pin)
     M->>C: identify(user)
-    C->>API: POST /identify {id, pin}
-    API->>DB: obtener_usuario_por_id(id, pin)
-    DB-->>API: user or None
-    API-->>C: 200 {name} or 404
-    C-->>M: name or null
-    M-->>UI: Go to request view (button disabled)
+    C->>API: POST /api/login {id, pin}
+    API->>V: verificar_usuario(id, pin)
+    V->>DB: obtener_usuario_por_id(id, pin)
+    DB-->>V: user or None
+    V-->>API: (user, result)
+    Note over API: Identification only: no LED, no motor, no log entry
+    API-->>C: 200 {identified, name} or 503 on a technical failure
+    C-->>M: name, null, or ConnectionException
+    M-->>UI: IDENTIFIED: go to request view (button disabled)
 
-    loop Every 1 s until presence or timeout
+    loop Every 1 s while the request view is open
+        UI->>M: checkPresence()
         M->>C: getPresence()
-        C->>API: GET /presence
-        API->>HW: PIR state
+        C->>API: GET /api/presence
+        API->>HW: presencia_reciente()
         API-->>C: {present: true / false}
+        C-->>M: true / false
+        M-->>UI: PRESENT / ABSENT / UNREACHABLE
     end
-    M-->>UI: present = true, enable "Request access"
+    Note over UI: "Request access" is enabled only while PRESENT
 
     U->>UI: Tap "Request access"
     UI->>M: requestAccess()
     M->>C: sendRequest(AccessRequest)
-    C->>API: POST /access {id, pin, method: "app"}
+    C->>API: POST /api/access {id, pin}
 
     alt Raspberry Pi answers
         API->>V: verificar_usuario(id, pin)
@@ -59,5 +65,5 @@ sequenceDiagram
 
     M-->>UI: Show result view
     UI-->>U: Authorized / Denied / Operation could not be completed
-    Note over UI,M: After 5 s: reset(), back to identification (initial state)
+    Note over UI,M: After 8 s: reset(), back to identification (initial state)
 ```
