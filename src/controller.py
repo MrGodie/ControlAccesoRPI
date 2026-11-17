@@ -13,6 +13,7 @@ Orden de identificación: primero el rostro; si no hay cámara, no se
 detecta rostro o DeepFace no está instalado, se cae a código y clave.
 """
 
+import functools
 import threading
 import time
 import traceback
@@ -48,7 +49,23 @@ DURACION_PANTALLA = {
 # Se resuelve en main(): la cámara puede no estar presente.
 _camara_disponible = False
 
+# Los LEDs, la bocina y el servomotor son un solo juego de salidas. Con
+# la app móvil, una solicitud puede llegar mientras el ciclo de la GUI
+# está reaccionando a otra: sin este candado, dos hilos moverían el
+# mismo servo y encenderían los mismos LEDs a la vez.
+_candado_salidas = threading.Lock()
 
+
+def _salidas_en_exclusiva(funcion):
+    """La reacción física se ejecuta completa, una a la vez."""
+    @functools.wraps(funcion)
+    def envoltura(*args, **kwargs):
+        with _candado_salidas:
+            return funcion(*args, **kwargs)
+    return envoltura
+
+
+@_salidas_en_exclusiva
 def procesar_resultado(usuario, resultado, metodo):
     """
     Reacciona al resultado de validación y registra el intento,
@@ -74,6 +91,7 @@ def procesar_resultado(usuario, resultado, metodo):
         resultado=resultado
     )
 
+@_salidas_en_exclusiva
 def procesar_resultado_enrolamiento(resultado):
     """
     Proporciona retroalimentación física al terminar un enrolamiento.
