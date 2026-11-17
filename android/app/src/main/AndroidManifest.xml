@@ -9,11 +9,37 @@
         local network, and Android blocks plain HTTP by default.
     -->
     <application
+        android:name=".AccessApp"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.ControlAcceso"
-        android:usesCleartextTraffic="true" />
+        android:usesCleartextTraffic="true">
+
+        <!-- View 1: identification. It is where every operation starts and ends. -->
+        <activity
+            android:name=".ui.IdentificationActivity"
+            android:exported="true"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- View 2: access request, enabled by presence. -->
+        <activity
+            android:name=".ui.RequestActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
+        <!-- View 3: result of the request. -->
+        <activity
+            android:name=".ui.ResultActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+    </application>
 
 </manifest>
