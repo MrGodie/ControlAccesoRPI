@@ -5,10 +5,12 @@ covers it, the pull request that delivered it, and its verification status.
 
 Jira project: **PIC** (ControlAccesoRPI) · Repository: `MrGodie/ControlAccesoRPI`
 
-> **Note on verification.** The repository has no automated test suite yet; that
-> work belongs to epic **PIC-1 (Integration & Testing)**. Until it exists, the
-> "Test" column records how each requirement has actually been verified: manual
-> verification on the prototype where it happened, or *pending* where it has not.
+> **Note on verification.** The mobile app has automated unit and screen tests
+> (`android/app/src/test`, run with `./gradlew testDebugUnitTest`). The Python
+> code on the Raspberry Pi has no test suite in the repository yet; that work
+> belongs to epic **PIC-1 (Integration & Testing)**. The "Test" column records
+> how each requirement has actually been verified: automated, manual on the
+> prototype, by inspection, or *pending* where it has not.
 
 ---
 
@@ -21,21 +23,21 @@ Jira project: **PIC** (ControlAccesoRPI) · Repository: `MrGodie/ControlAccesoRP
 | **FR-03** Reset capture state after showing the result | PIC-34, PIC-47 | #16, #49 | Manual on prototype |
 | **FR-04** Key and sequence length configurable in one place | PIC-47 | #49 | Pending — `config.py` not yet exercised by a test |
 | **FR-05** Per-press feedback without revealing the key or its length | PIC-34 | #16 | Manual on prototype |
-| **FR-06** Detect presence with the PIR and move from idle to interaction | PIC-49 | #50 | Manual on prototype (configurable 10 s timeout) |
+| **FR-06** Detect presence with the PIR and move from idle to interaction | PIC-49 | #50 | Manual on prototype (configurable timeout, `TIEMPO_ESPERA_PRESENCIA`, 30 s by default) |
 | **FR-07** Complete identification with buttons when the GUI is unavailable | PIC-53, PIC-60 | #56 | Manual on prototype |
 | **FR-08** One shared validation path for both input methods | PIC-47, PIC-48 | #49, #51 | Pending |
-| **FR-09** Log every attempt in MySQL with id, timestamp, method and outcome | PIC-48, PIC-18 | #51 | Pending — PIC-18 still in progress |
+| **FR-09** Log every attempt in MySQL with id, timestamp, method and outcome | PIC-48, PIC-18 | #51 | Pending — implemented (`db.registrar_intento`, method `gui`, `botones`, `facial`, `app` or `app_facial`); no recorded verification on the prototype |
 | **FR-10** Audible response and actuator activation on authorized access | PIC-52, PIC-76, PIC-79, PIC-82 | #53, #91, #95, #96, #97 | Manual on prototype (servo 2 s open, 0.5 s close); audio through the USB speaker (#91, #96, #97) has no recorded verification yet |
 | **FR-11** Distinguish authorized / no permission / unknown credential / DB failure | PIC-50, PIC-78, PIC-79 | #52, #92, #95 | Manual on prototype (distinct LED pattern for system error) |
 | **FR-12** Acquire images, detect and identify a face, then authorize accordingly | PIC-14, PIC-19, PIC-16, PIC-17, PIC-59, PIC-68, PIC-71, PIC-72, PIC-73 | #75, #82, #84, #85, #86, #90 | Pending — implemented (`src/face.py` identifies against the stored templates; `controller.intento_facial` authorizes through `validator.verificar_rostro`), no recorded verification |
 | **FR-13** Guided facial enrollment flow for the administrator | PIC-12, PIC-15, PIC-61, PIC-70, PIC-71, PIC-75, PIC-80 | #73, #83, #84, #88, #94 | Pending — flow implemented in `src/enrollment.py` (new users, and existing users since #94), no recorded verification |
 | **FR-14** Store the facial template with the user, deleted along with the user | PIC-9, PIC-10, PIC-11, PIC-74, PIC-77 | #70, #71, #87, #89 | Pending — `ON DELETE CASCADE` is declared in `schema.sql` and `migration.sql`; cascade delete not verified |
 | **FR-15** Identify the user from the mobile application | PIC-105, PIC-97, PIC-102, PIC-100, PIC-88 | #104, #105, #106, #107 | Automated on a PC (`/api/login` over HTTP; `AccessManagerTest`, `ScreensTest`): a wrong code and a wrong key give the same answer; pending on the real Raspberry Pi and on a phone (PIC-107) |
-| **FR-16** Enable the mobile access request only after the PIR detects presence | PIC-105, PIC-97, PIC-100, PIC-89 | #102, #104, #106, #107 | Automated on a PC with a simulated PIR (`presencia_reciente()`; request button disabled without presence in `ScreensTest`); pending on the real Raspberry Pi and on a phone (PIC-107) |
+| **FR-16** Enable the mobile access request only after the PIR detects presence | PIC-105, PIC-97, PIC-100, PIC-89, PIC-115, PIC-116 | #102, #104, #106, #107, #113, #116 | #113 removed the condition and #116 restored it, as the project brief requires; the facial access has the same condition (#114). Automated on a PC with a simulated PIR (`presencia_reciente()`; request button disabled without presence in `ScreensTest`); pending on the real Raspberry Pi and on a phone (PIC-107) |
 | **FR-17** Send the access request from the app and receive the result there | PIC-105, PIC-97, PIC-100, PIC-89 | #103, #104, #106, #107 | Automated on a PC: the Kotlin client against the Python API with simulated hardware (authorized request moves the motor and is logged as `app`); pending on the real Raspberry Pi and on a phone (PIC-107) |
 | **FR-18** App distinguishes authorized / denied / not completed for a technical condition | PIC-105, PIC-100, PIC-89 | #106, #107 | Automated on a PC (`ModelTest`, `RaspberryClientTest`, `ScreensTest`); pending on the real Raspberry Pi and on a phone (PIC-107) |
 | **FR-19** App returns to its initial state when the operation ends | PIC-105, PIC-100, PIC-89 | #106, #107 | Automated on a PC (`AccessManager.reset()`; result view closes by itself and the form comes back empty in `ScreensTest`); pending on a phone (PIC-107) |
-| **FR-20** Same validation logic for the app as for the existing access methods | PIC-105, PIC-97 | #104 | By inspection: `src/api_server.py` calls `validator.verificar_usuario()` and has no permission check of its own; Automated on a PC with the real `validator` and `controller` |
+| **FR-20** Same validation logic for the app as for the existing access methods | PIC-105, PIC-97, PIC-111 | #104, #114 | By inspection: `src/api_server.py` calls `validator.verificar_usuario()` (code and key) or `validator.verificar_rostro()` (face) and has no permission check of its own; automated on a PC with the real `validator` and `controller` |
 | **FR-21** User management from the app with the same role capabilities as the GUI | PIC-108, PIC-90, PIC-99, PIC-112, PIC-114 | #110, #112 | Pending — not implemented in the app. The GUI can change a user's role since PIC-114 (`db.cambiar_rol`), tested on a PC against a throwaway MySQL |
 | **FR-22** Facial access from the app with the phone camera, decided on the Raspberry Pi | PIC-108, PIC-111 | #110, #114 | Pending — implemented in PIC-111 (`POST /api/access/face`, `face.identificar_imagenes`, `FaceActivity`), enabled only with PIR presence (`checkPresenceForFace`). Automated on a PC: the API with the real `face.py` and a simulated model; the app with `AccessManagerTest`, `RaspberryClientTest` and `ScreensTest`. Not yet run on the Raspberry Pi or on a phone |
 | **FR-23** Log every relevant event, not only access attempts | PIC-108, PIC-109 | #110, #111 | Pending — implemented in #111 (`src/bitacora.py`, table `eventos`), tested on a PC against a throwaway MySQL; not yet run on the Raspberry Pi |
@@ -74,6 +76,10 @@ Jira project: **PIC** (ControlAccesoRPI) · Repository: `MrGodie/ControlAccesoRP
 | BPMN process with facial authentication | PIC-13 | #72, #76 |
 | DFD level 0 and level 1 | PIC-22 | #76 |
 | Sequence and state diagrams | PIC-24, PIC-58 | #76 |
+| Use case and class diagrams for the mobile app | PIC-96 | #98 |
+| Mobile app wireframes | PIC-101 | #100 |
+| Facial access wireframes and updated mobile sheets | PIC-111 | #115 |
+| Verification checklist for the prototype and the phone | PIC-107 | #108 |
 | Requirements document updated for facial recognition | PIC-25 | #69 |
 | System architecture diagram | PIC-23 | #77 |
 | `flow.md` and `system_flowchart.md` with facial recognition | PIC-66, PIC-67 | #78 |
@@ -82,23 +88,33 @@ Jira project: **PIC** (ControlAccesoRPI) · Repository: `MrGodie/ControlAccesoRP
 
 Open items that keep requirements from being fully traceable:
 
-- **No automated tests.** Epic PIC-1 has no test suite; every "pending" entry above
-  depends on it.
+- **No automated tests for the Raspberry Pi code.** Epic PIC-1 has no test suite
+  for `src/`; the mobile app has its own tests. Most "pending" entries above
+  depend on a run on the prototype.
 - **Facial recognition implemented but not verified.** `face.py` (#82) and
   `enrollment.py` (#83) are merged, so FR-12, FR-13, NFR-07 and NFR-08 are
   implemented; none of them has a recorded verification yet.
-- **README not yet updated** for this version (PIC-63).
 - **Mobile application implemented but not verified on the device.** FR-15 to
   FR-20 and NFR-09 to NFR-11 (Integrativo 4) are implemented (#102 to #107) and
   tested on a PC with simulated hardware. None of them has a recorded run on the
   real Raspberry Pi or on a phone yet; `docs/verification_checklist.md` (PIC-107)
-  lists what has to be shown.
+  lists what has to be shown. PIC-107 is marked as done in Jira, but the
+  checklist has not been filled in.
 - **Mobile application, second stage in progress.** FR-21 to FR-26 and
   NFR-12 to NFR-14 (administration, facial access and full log from the app,
-  with offline queue) are specified in #110 (PIC-108). Only FR-23 has an
-  implementation (#111, PIC-109); the rest is planned in PIC-90, PIC-93,
-  PIC-99 and PIC-110 to PIC-113. NFR-09 was changed to allow administration
-  from the app.
+  with offline queue) are specified in #110 (PIC-108). Implemented so far:
+  the full event log (FR-23, #111), the role change on the GUI that FR-21 will
+  mirror (#112), and the facial access from the app (FR-22, NFR-14, #114).
+  The rest is planned in PIC-90, PIC-93, PIC-99, PIC-110, PIC-112 and PIC-113.
+  NFR-09 was changed to allow administration from the app.
+- **FR-16 removed and restored.** #113 (PIC-115) made the app stop waiting
+  for the PIR; the project brief requires it, so #116 (PIC-116) restored it
+  and #114 applies it to the facial access too.
+- **FR-01 and FR-04 disagree with the configuration.** FR-01 asks for a key of
+  4 to 6 presses and FR-04 mentions a length of 3; `LONGITUD_CLAVE` in
+  `config.py` is 3.
+- **PIC-98 (login lockout) was reopened.** It was marked as done, but there is
+  no lockout logic in the code.
 
 ---
 
@@ -173,3 +189,19 @@ the Jira migration (PIC-7, PR #7) refer to GitHub issues.
 | Fixed LEDs and audio not being called | PIC-79 | #95 | controller.py and exit.py now trigger the LEDs and sounds; added sounds/fallo.wav. Approved by 2 reviewers. |
 | USB speaker found by name | PIC-82 | #96 | exit.py finds the USB speaker by name instead of a fixed card number. Approved by 2 reviewers. |
 | New team access sounds | PIC-82 | #97 | sounds/ replaced with the team's new sounds; error and fallo are repeated. Approved by 2 reviewers. |
+| Use case and class diagrams for the mobile app | PIC-96 | #98 | docs/use_cases.md and docs/class_diagram.md; mobile app in the other diagrams. Approved by 2 reviewers. |
+| Mobile app requirements and traceability | PIC-105 | #99 | FR-15 to FR-20 and NFR-09 to NFR-11 added; traceability updated. Approved by 2 reviewers. |
+| Mobile app wireframes | PIC-101 | #100 | docs/Interface_5.png and docs/Interface_6.png. Approved by 2 reviewers. |
+| Mobile app in the README | PIC-106 | #101 | README.md describes the mobile app and its installation. Approved by 2 reviewers. |
+| Non-blocking PIR presence check | PIC-97 | #102 | gpio_handler.presencia_reciente() for the API, without blocking the access cycle. |
+| Physical outputs one at a time | PIC-97 | #103 | controller.procesar_resultado() runs LEDs, sound and servo under a lock, so two methods never react at once. Approved by 1 reviewer. |
+| HTTP API for the mobile app | PIC-97 | #104 | src/api_server.py with /api/login, /api/presence and /api/access, in its own thread. Approved by 2 reviewers. |
+| Android project in Kotlin | PIC-102 | #105 | android/ project, build and test setup. Approved by 1 reviewer. |
+| Shared layer of the mobile app | PIC-100 | #106 | Model, AccessManager and RaspberryClient, with unit tests. Approved by 1 reviewer. |
+| Three views of the mobile app | PIC-88, PIC-89 | #107 | Identification, request and result views, with Robolectric tests. Approved by 2 reviewers. |
+| Mobile app documentation aligned with the code | PIC-107 | #108 | README, diagrams and docs/verification_checklist.md. Approved by 1 reviewer. |
+| Simulated API to try the app without the Raspberry Pi | *none* | #109 | tools/simulated_api.py serves the real api_server.py with simulated hardware and test users. Approved by 1 reviewer. |
+| Requirements for the second stage of the app | PIC-108 | #110 | FR-21 to FR-26 and NFR-12 to NFR-14; NFR-09 allows administration from the app. Approved by 2 reviewers. |
+| Full event log | PIC-109 | #111 | src/bitacora.py and table eventos: every event, queued and written by a background thread. Approved by 1 reviewer. |
+| Role change from the GUI | PIC-114 | #112 | db.cambiar_rol(); the last active user that can manage cannot lose that role; event cambio_rol. Approved by 1 reviewer. |
+| The app no longer waits for PIR presence | PIC-115 | #113 | FR-16 changed; the request is enabled right after identifying. |

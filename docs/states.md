@@ -22,6 +22,8 @@ stateDiagram-v2
 ```mermaid
 stateDiagram-v2
     [*] --> IDLE
+    IDLE --> SENDING: PIR presence, then tap Entrar con rostro (photos)
+    SENDING --> IDLE: face not recognized, no face,<br/>not available, go to code and key
     IDLE --> IDENTIFIED: user recognized
     IDLE --> IDLE: not recognized or no connection
 
@@ -29,8 +31,8 @@ stateDiagram-v2
     IDENTIFIED --> IDLE: timeout or cancel
 
     READY --> SENDING: tap Request access
-    SENDING --> SHOWING_RESULT: answer received
+    SENDING --> SHOWING_RESULT: answer received (or face recognized)
     SENDING --> SHOWING_RESULT: timeout, technical error
 
-    SHOWING_RESULT --> IDLE: after 5 s, reset()
+    SHOWING_RESULT --> IDLE: after 8 s or Terminar, reset()
 ```

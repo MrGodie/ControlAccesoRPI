@@ -4,6 +4,7 @@ Generate the low-fidelity wireframes of the mobile access app (Integrativo 4).
 Output:
     docs/Interface_5.png  - identification and access request (screens 01-05)
     docs/Interface_6.png  - request result and return to the start (screens 06-09)
+    docs/Interface_7.png  - facial access, where the app opens (screens 00A-00C, FR-22)
 
 The sheets follow the layout of docs/Interface_3.png and docs/Interface_4.png:
 light gray canvas, sheet title and subtitle at the top, white screens with a
@@ -51,6 +52,9 @@ ROW_FILL = (245, 245, 245)
 BORDER = (200, 200, 200)
 DISABLED_FILL = (232, 232, 232)
 DISABLED_INK = (165, 165, 165)
+
+# Same note on both sheets: what the app does not do yet.
+FUERA_DE_ALCANCE = ("La app todavía no registra usuarios ni cambia permisos o roles: NFR-09 lo permite solo a roles que administran, con sesión (FR-21, NFR-12), y no está implementado. Nunca configura el sistema.")
 
 # ------------------------------------------------------------------- fonts --
 
@@ -204,6 +208,15 @@ class Screen:
             self.d.text((SCREEN_W / 2, y + h / 2), label, font=font, fill=color, anchor="mm")
             y += h + gap
 
+    def camera(self, label, height=640):
+        """Outlined placeholder for the live camera preview, as in the PI3 sheets."""
+        box = (MARGIN, self.y, SCREEN_W - MARGIN, self.y + height)
+        self.d.rectangle(box, fill=WHITE, outline=BORDER, width=3)
+        font = self.f.get("medium", 22)
+        w = text_width(self.d, label, font, 2.5)
+        draw_tracked(self.d, ((SCREEN_W - w) / 2, self.y + height / 2 - 12), label, font, FAINT, 2.5)
+        self.y += height + 30
+
     def footnote(self, text):
         self.d.text((MARGIN, SCREEN_H - 110), text, font=self.f.get("regular", 24), fill=FAINT)
 
@@ -277,7 +290,7 @@ def screens_sheet_6(f):
     s.row("Audio y actuador en el punto de acceso")
     s.row("Intento registrado")
     s.buttons([("Terminar", "primary")])
-    s.footnote("Registrado: AUTORIZADO · método APP · vuelve al inicio en 5 s")
+    s.footnote("Registrado: AUTORIZADO · método APP o APP_FACIAL · vuelve al inicio en 8 s")
     out.append(s)
 
     s = Screen(f, "07", "RECHAZADO")
@@ -287,7 +300,7 @@ def screens_sheet_6(f):
     s.row("Punto 01: puerta cerrada")
     s.row("Intento registrado")
     s.buttons([("Terminar", "primary")])
-    s.footnote("Registrado: DENEGADO_SIN_PERMISO · método APP · vuelve al inicio en 5 s")
+    s.footnote("Registrado: DENEGADO_SIN_PERMISO · método APP o APP_FACIAL · vuelve en 8 s")
     out.append(s)
 
     s = Screen(f, "08", "FALLO TÉCNICO")
@@ -308,6 +321,52 @@ def screens_sheet_6(f):
     s.row("La siguiente persona inicia desde 01")
     s.buttons([("Ir al inicio", "secondary")])
     s.footnote("FR-19 · La app vuelve a 01 sin datos del intento")
+    out.append(s)
+
+    return out
+
+
+def screens_sheet_7(f):
+    out = []
+
+    s = Screen(f, "00A", "ESPERANDO PRESENCIA")
+    s.title("Control de Acceso")
+    s.subtitle("Mira a la cámara para entrar con tu rostro")
+    s.camera("VISTA PREVIA · CÁMARA FRONTAL")
+    s.row("Acércate al punto de acceso")
+    s.row("Esperando a que el sensor detecte tu presencia")
+    s.buttons([("Entrar con rostro", "disabled"), ("Usar código y clave", "secondary")])
+    s.footnote("FR-16 · FR-22 · Sin presencia del PIR no se puede entrar con rostro")
+    out.append(s)
+
+    s = Screen(f, "00B", "ROSTRO HABILITADO")
+    s.title("Control de Acceso")
+    s.subtitle("Mira a la cámara para entrar con tu rostro")
+    s.camera("VISTA PREVIA · ROSTRO EN CUADRO")
+    s.row("Presencia detectada", emphasis=True)
+    s.row("Ya puedes entrar con tu rostro")
+    s.buttons([("Entrar con rostro", "primary"), ("Usar código y clave", "secondary")])
+    s.footnote("NFR-14 · Las fotos se envían al punto de acceso y no se guardan")
+    out.append(s)
+
+    s = Screen(f, "00C", "RECONOCIENDO")
+    s.title("Reconociendo tu rostro...")
+    s.subtitle("3 fotos enviadas · Punto 01")
+    s.camera("VISTA PREVIA · CÁMARA FRONTAL", height=480)
+    s.progress("RECONOCIENDO EN LA RASPBERRY PI", 0.6)
+    s.row("Mantente quieto")
+    s.buttons([("Entrar con rostro", "disabled"), ("Usar código y clave", "disabled")])
+    s.footnote("FR-22 · Mismo modelo y plantillas que la cámara de la Raspberry (FR-12)")
+    out.append(s)
+
+    s = Screen(f, "01", "RESPALDO")
+    s.title("Identifíquese")
+    s.subtitle("Laboratorio · Punto 01")
+    s.field("CÓDIGO DE USUARIO", "Ej. 1042", placeholder=True)
+    s.field("CLAVE", "••••••", placeholder=True)
+    s.row("No te reconocimos. Usa tu código y clave.", emphasis=True)
+    s.buttons([("Identificarme", "primary")])
+    s.footnote("FR-22 · El formulario dice por qué no funcionó el rostro")
     out.append(s)
 
     return out
@@ -365,6 +424,7 @@ def main():
         subtitle,
         screens_sheet_5(f),
         [
+            ("00 Rostro", "→ (Usar código y clave, o el rostro no funcionó) → 01 Identificación · ver Interface_7"),
             ("01 Identificación", "→ (Identificarme, credencial válida) → 03 Esperando presencia | 04 Solicitud habilitada"),
             ("01 Identificación", "→ (credencial inválida) → 02 Credencial inválida → (corregir datos) → 01"),
             ("03 Esperando presencia", "→ (el PIR detecta presencia) → 04 Solicitud habilitada"),
@@ -378,7 +438,7 @@ def main():
                 "Si la Raspberry Pi no responde al identificarse, la app muestra 08 No se pudo completar; nunca 02 Credencial inválida.",
             ]),
             ("FUERA DE ALCANCE", [
-                "La app no registra usuarios, no modifica permisos, no administra cuentas ni configura el sistema (NFR-09).",
+                FUERA_DE_ALCANCE,
             ]),
         ],
         os.path.join(args.out_dir, "Interface_5.png"),
@@ -391,20 +451,44 @@ def main():
         screens_sheet_6(f),
         [
             ("05 Enviando", "→ 06 Autorizado | 07 Rechazado | 08 No se pudo completar"),
-            ("06 · 07", "→ (Terminar, o tras 5 s) → 09 Regreso al inicio"),
+            ("06 · 07", "→ (Terminar, o tras 8 s) → 09 Regreso al inicio"),
             ("08 No se pudo completar", "→ (Reintentar) → 04 Solicitud habilitada si sigue la presencia; si no, 03"),
             ("08 No se pudo completar", "→ (Terminar) → 09 Regreso al inicio"),
-            ("09 Regreso al inicio", "→ (3 s, o Ir al inicio) → 01 Identificación, con el formulario vacío"),
+            ("09 Regreso al inicio", "→ 01 Identificación con el formulario vacío, o 00 Rostro si empezó con el rostro"),
         ],
         [
             ("RUTA ALTERNATIVA", [
                 "Los botones, la interfaz de la Raspberry Pi y el rostro siguen funcionando igual; la app es un medio de acceso más (NFR-10).",
             ]),
             ("FUERA DE ALCANCE", [
-                "La app no registra usuarios, no modifica permisos, no administra cuentas ni configura el sistema (NFR-09).",
+                FUERA_DE_ALCANCE,
             ]),
         ],
         os.path.join(args.out_dir, "Interface_6.png"),
+    )
+
+    render_sheet(
+        f,
+        "Control de Acceso RPi · PI4 — App móvil: acceso con rostro (inicio de la app)",
+        subtitle,
+        screens_sheet_7(f),
+        [
+            ("00A Esperando presencia", "→ (el PIR detecta presencia) → 00B Rostro habilitado"),
+            ("00B Rostro habilitado", "→ (se pierde la presencia) → 00A · (Entrar con rostro) → 00C Reconociendo"),
+            ("00C Reconociendo", "→ (rostro reconocido) → Interface_6: 06 Autorizado | 07 Rechazado"),
+            ("00C Reconociendo", "→ (no reconocido, sin rostro, no disponible o fallo técnico) → 01 con el motivo"),
+            ("00A · 00B", "→ (Usar código y clave) → Interface_5: 01 Identificación"),
+        ],
+        [
+            ("RUTA ALTERNATIVA", [
+                "Reconocido pero sin permiso: 07 Rechazado. No se ofrecen el código y la clave porque darían el mismo resultado.",
+                "Sin permiso de cámara, o sin cámara, la app funciona solo con código y clave (Interface_5).",
+            ]),
+            ("FUERA DE ALCANCE", [
+                FUERA_DE_ALCANCE,
+            ]),
+        ],
+        os.path.join(args.out_dir, "Interface_7.png"),
     )
 
 

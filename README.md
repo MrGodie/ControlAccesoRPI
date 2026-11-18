@@ -1,8 +1,8 @@
 # RPiAccessControl
 
-Access control system based on a sequence of presses on physical buttons connected to the GPIO inputs of a Raspberry Pi. The system captures a sequence of button presses, compares it against a configured valid key, and displays in the terminal whether access was granted or denied.
+Access control system on a Raspberry Pi. A person is identified by facial recognition, by their user code and key on the screen, by a key on physical buttons, or from a mobile app on their phone. Every method goes through the same validation against a MySQL database; an authorized access lights the green LED, plays a sound and opens a servo, and everything that happens is logged.
 
-This is the first stage of a system that will grow throughout the semester. This delivery focuses on the local prototype only — no network, database, or external services are included at this stage.
+The project started as a button-only prototype and grew in stages: GUI and database (V2), local facial recognition, and the mobile app (Integrativo 4, now in its second stage). Everything runs on the local network; no cloud service is used.
 
 ## Team Members
 
@@ -16,24 +16,27 @@ This is the first stage of a system that will grow throughout the semester. This
 
 ## Features
 
-- Capture of button presses from physical buttons connected to GPIO.
-- Temporary storage of the sequence until it reaches the defined length (between 4 and 6 presses).
-- Automatic comparison of the captured sequence against the configured valid key.
-- Terminal messages: "Access granted" or "Access denied".
-- Automatic reset of the capture state after each attempt, with no need to restart the program.
-- Debounce logic to prevent duplicate registrations from a single physical press.
+- Four ways to identify: face in front of the camera, code and key on the screen, key on the physical buttons, and the mobile app (face with the phone camera, or code and key).
+- One shared validation for every method, based on the role of the user (`usuario`, `admin`, `soporte`).
+- Distinct answers for authorized, denied (no permission or not recognized) and technical failure, which is never shown as a denial.
+- Green LED, sound and servo on an authorized access; red LED and sound otherwise.
+- Administration on the screen for roles that can manage: register users, enroll or re-enroll their face, and change their role.
+- Full event log in MySQL: accesses, identifications, administration and failures.
+- Key length set in `config.py` (`LONGITUD_CLAVE`, 3 by default) and debounce on the physical buttons.
 
 
 ### Hardware
 
 *   Raspberry Pi 5
 *   Keyboard
-*   Monitor
+*   Monitor (for the GUI)
+*   USB camera (facial recognition)
+*   USB speaker (Jabra Link 370) for the access sounds
 *   1x Passive Infrared (PIR) Motion Sensor
 *   3x Momentary Push Buttons (Tactile switches)
 *   5x LEDs (3x Sequence indicators, 1x Green status, 1x Red status)
 *   5x Current-limiting resistors (220Ω - 330Ω recommended)
-*   1x Active or Passive 5V/3.3V Buzzer
+*   1x Buzzer on GPIO 27 (wired since the first stage; the sounds now play through the USB speaker)
 *   1x 50 Hz Analog/Digital Micro Servo (e.g., SG90)
 *   Breadboard and male-to-female / male-to-male jumper wires
 *   External power supply and HDMI display (for GUI deployment)
@@ -42,19 +45,21 @@ This is the first stage of a system that will grow throughout the semester. This
 ### Software
 *   Raspberry Pi OS (64-bit recommended)
 *   Python 3.9+
-*   Python packages: RPi.GPIO, mysql-connector-python, tkinter
+*   Python packages: RPi.GPIO, mysql-connector-python, tkinter, opencv-python, numpy, deepface
 *   MySQL Server / MariaDB Server
+*   `aplay` (ALSA) for the sounds; `setup_audio.sh` sets up the USB speaker
+*   The database connection is read from the environment variables `DB_HOST`, `DB_USER`, `DB_PASSWORD` and `DB_NAME` (NFR-06)
 
 ### Core Features
 
 *   *Presence Detection:* Automated event initiation triggered by a Passive Infrared (PIR) sensor to preserve system resources during idle states.
-*   *Dual Authentication Modes:* Fallback input design supporting both physical sequence buttons (hardware mode) and desktop input forms (GUI mode).
+*   *Several Authentication Modes:* local facial recognition first, then code and key on the GUI, physical buttons when there is no monitor, and the mobile app (face, or code and key).
 *   *Physical Actuation & Feedback:*
     *   Automated physical barrier control via 50 Hz PWM servo actuation.
-    *   Active buzzer acoustic signaling for authorized unlocks.
+    *   Access sounds through the USB speaker: success, denial and technical failure (`sounds/`).
     *   Independent visual LED indicators for individual button confirmation, authorized entry (green), denied entry (red), and system errors.
 *   *Input Debounce Optimization:* Software-level debouncing logic to mitigate mechanical contact noise and prevent duplicate registrations (NFR-01).
-*   *Relational Access Auditing:* Structured event logging recording timestamps, user references, access vectors (GUI vs. buttons), and operational results.
+*   *Relational Access Auditing:* every access attempt in `intentos_acceso` (user, method, result, time) and every event in `eventos` (FR-23).
 
 ### Hardware Configuration (GPIO Pinout)
 
@@ -72,7 +77,7 @@ All pin references follow the Broadcom (BCM) GPIO numbering standard:
 | Status LED Red (Denied/Error) | GPIO 13 | Output | Active High |
 | PIR Motion Sensor | GPIO 16 | Input | Active High (Motion Triggered) |
 | Servo Actuator | GPIO 26 | Output | 50 Hz PWM Signal |
-| Audio Buzzer | GPIO 27 | Output | Active High |
+| Audio Buzzer | GPIO 27 | Output | Active High (kept low; sounds go through the USB speaker) |
 
 ### Architecture and System Design
 
@@ -80,11 +85,15 @@ The system implements a modular architecture under the src/ directory to guarant
 
 *   *controller.py*: Central orchestrator and execution loop. Governs system state, awaits presence triggers, delegates input reading, executes verification routines, dispatches actuator responses, and ensures event persistence.
 *   *gpio_handler.py*: Hardware abstraction layer for GPIO operations. Handles pin initialization, pull-up input sensing, debouncing routines, LED indicator control, and motion sensor event loops.
-*   *gui.py*: Presentation layer implemented in Tkinter. Provides a desktop interface for entering credentials via masked input fields.
-*   *validator.py*: Decoupled credential evaluation logic. Normalizes inputs captured from both the physical buttons and the GUI before forwarding verification requests to the data layer.
-*   *db.py*: Persistence layer utilizing mysql.connector. Connects to a local relational database (control_acceso), authenticates credentials against stored records, and logs access attempts.
+*   *gui.py*: Presentation layer implemented in Tkinter. Shows the access screens (idle, face, code and key, result) and the administration screens (user list, registration, face enrollment, role change).
+*   *validator.py*: Decoupled credential evaluation logic shared by every method: buttons, GUI, face and the mobile app. Classifies each attempt as authorized, denied (no permission or not recognized) or system error.
+*   *db.py*: Persistence layer utilizing mysql.connector. Connects to the local database (control_acceso), checks credentials against their hashes, logs access attempts and events, and manages users, roles and face templates.
+*   *camera.py*: Opens the USB camera, checks the quality of each frame and always releases the camera.
+*   *face.py*: Local facial recognition with DeepFace: turns a camera frame, or a photo sent by the app, into an embedding and compares it with the stored templates (NFR-07). It never stores images (NFR-08).
+*   *enrollment.py*: Guided registration of a new user and enrollment or re-enrollment of a face (FR-13).
+*   *api_server.py*: HTTP API for the mobile app, in its own thread; it only orchestrates and reuses the modules above.
 *   *bitacora.py*: Full event log (FR-23). Records everything the system does, not only access attempts: identifications, administration sessions and changes, technical failures, start and stop. Events are queued and written by a background thread into the `eventos` table, so an access never waits for the database; if the database is down they are retried, and each event has its own `evento_uid` so a retry never stores it twice.
-*   *exit.py*: Actuation and output driver. Controls Pulse Width Modulation (PWM) duty cycles for servo-based locking mechanisms and triggers digital buzzers for acoustic signaling.
+*   *exit.py*: Actuation and output driver. Plays the access sounds on the USB speaker (found by name) and moves the servo with PWM.
 *   *config.py*: Centralized configuration repository defining pin mappings, temporal constants, and system parameters without modifying business logic (FR-04).
 
 ## Mobile App
@@ -97,9 +106,9 @@ Integrativo 4 adds a mobile application as a new way to request access. It is me
 *   *Result in the app:* the app shows whether access was authorized, denied, or could not be completed due to a technical condition. A technical failure is never shown as a denial (FR-17, FR-18, NFR-11).
 *   *Return to the start:* when the operation ends, the app clears the entered data and returns to its initial state (FR-19).
 *   *Same validation logic:* requests from the app are authorized by the same validation used by the other access methods; there is no separate authorization path for the app (FR-20).
-*   *No administrative functions:* the app does not register users, change permissions, manage accounts, or configure the system (NFR-09).
+*   *Administration not in the app yet:* NFR-09 now allows it for the roles that can manage or consult (FR-21), within a session (NFR-12), but it is not implemented: users, roles and faces are managed on the screen of the Raspberry Pi. The app never changes the system configuration.
 
-The requirements are listed in `requirements.md` (FR-15 to FR-20, NFR-09 to NFR-11) and the screens in `docs/Interface_5.png` and `docs/Interface_6.png`.
+The requirements are listed in `requirements.md` (FR-15 to FR-26, NFR-09 to NFR-14) and the screens in `docs/Interface_5.png`, `docs/Interface_6.png` and `docs/Interface_7.png`. The camera view of the facial access, where the app opens, is in `docs/Interface_7.png` (FR-22).
 
 **Status:** implemented in Kotlin (`android/`), with the API on the Raspberry Pi in `src/api_server.py`. Tested on a PC; the run on the real Raspberry Pi and on a phone is tracked in `docs/verification_checklist.md` (PIC-107).
 
@@ -127,7 +136,7 @@ The Raspberry Pi serves four routes, on port 8000 by default (`API_PUERTO` in `s
 ### Installation
 
 *   The app runs on the user's phone and sends its requests to the Raspberry Pi that runs this system, so the Raspberry Pi must be running and reachable from the phone.
-*   No administrator setup is done from the app; users and permissions are still managed on the Raspberry Pi.
+*   No administration is done from the app yet; users, roles and faces are managed on the Raspberry Pi. A face used from the app must be enrolled there first.
 
 | Step | How |
 | :--- | :--- |
@@ -136,7 +145,7 @@ The Raspberry Pi serves four routes, on port 8000 by default (`API_PUERTO` in `s
 | Deployment to the phone | Run the app from Android Studio with the phone connected by USB, or copy `app-debug.apk` to the phone and install it. The first time it asks for the camera; without it, the app still works with code and key |
 | Connecting the app to the Raspberry Pi | Phone and Raspberry Pi on the same network. In the first view, tap **Conexión** and type the address of the Raspberry Pi, for example `192.168.1.50:8000` |
 
-The API needs nothing new on the Raspberry Pi: it uses the Python standard library. It starts with the system (`python3 src/controller.py`) and can be turned off with `API_ACTIVA = False` in `src/config.py`.
+The API itself uses only the Python standard library; the facial access from the app uses the same OpenCV and DeepFace that the camera of the Raspberry Pi needs. It starts with the system (`python3 src/controller.py`) and can be turned off with `API_ACTIVA = False` in `src/config.py`.
 
 ### Tests
 
@@ -146,7 +155,7 @@ Inside `android/`:
 ./gradlew testDebugUnitTest
 ```
 
-The tests run on the PC, without a phone: the logic and the HTTP client against a server that answers like the API, and the three views with Robolectric. To check a real Raspberry Pi from the PC:
+The tests run on the PC, without a phone: the logic and the HTTP client against a server that answers like the API, and the views with Robolectric. To check a real Raspberry Pi from the PC:
 
 ```
 RASPBERRY_URL=http://<pi-address>:8000 RASPBERRY_USER_ID=<id> RASPBERRY_PIN=<key> ./gradlew testDebugUnitTest --tests "*LiveRaspberryTest*"
@@ -154,7 +163,7 @@ RASPBERRY_URL=http://<pi-address>:8000 RASPBERRY_USER_ID=<id> RASPBERRY_PIN=<key
 
 ### Trying the app without the Raspberry Pi
 
-`tools/simulated_api.py` serves the real `src/api_server.py` on a PC. Only the PIR sensor, the database and the physical reaction are simulated, so the app gets the same answers it gets from the Raspberry Pi. From the repository root:
+`tools/simulated_api.py` serves the real `src/api_server.py` on a PC. Only the PIR sensor, the database, the facial recognition and the physical reaction are simulated, so the app gets the same answers it gets from the Raspberry Pi. From the repository root:
 
 ```
 python tools/simulated_api.py
@@ -172,7 +181,7 @@ It never touches GPIO, the database or the access log. It does not replace the r
 
 ### Known limitation
 
-The code and key travel over plain HTTP on the local network. They are stored hashed in the database, but they are not encrypted in transit. HTTPS or a session token is future work.
+The code and key travel over plain HTTP on the local network. They are stored hashed in the database, but they are not encrypted in transit, and neither are the photos of the facial access. A session token is planned (NFR-12, PIC-110); HTTPS is not.
 
 ## Project Structure
 
@@ -189,7 +198,9 @@ ControlAccesoRPI/
 │   ├── Interface_4.png
 │   ├── Interface_5.png
 │   ├── Interface_6.png
+│   ├── Interface_7.png
 │   ├── bpmn-process.md
+│   ├── class_diagram.md
 │   ├── data.md
 │   ├── dfd-0.md
 │   ├── dfd-1.md
@@ -197,7 +208,9 @@ ControlAccesoRPI/
 │   ├── sequence.md
 │   ├── states.md
 │   ├── system_architecture.md
-│   └── system_flowchart.md
+│   ├── system_flowchart.md
+│   ├── use_cases.md
+│   └── verification_checklist.md
 ├── sounds/
 │   ├── error.wav
 │   ├── exito.wav
@@ -211,7 +224,7 @@ ControlAccesoRPI/
 │       │   ├── model/       (User, AccessRequest, AccessResult, ResultStatus, AppState)
 │       │   ├── network/     (RaspberryClient)
 │       │   ├── logic/       (AccessManager)
-│       │   └── ui/          (the three views)
+│       │   └── ui/          (camera, identification, request and result views)
 │       └── test/            (unit and screen tests)
 └── src/
     ├── api_server.py
