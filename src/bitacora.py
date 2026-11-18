@@ -3,7 +3,8 @@
 """
 Bitácora completa del sistema (FR-23): todo lo que pasa, no solo los
 intentos de acceso. Accesos por cualquier medio, identificaciones,
-entradas y salidas de administración, altas y enrolamientos, fallos
+entradas y salidas de administración, altas, enrolamientos y cambios de
+rol, fallos
 técnicos, arranque y apagado.
 
 registrar() no bloquea: pone el evento en una cola y un hilo aparte lo
@@ -36,6 +37,7 @@ ADMIN_FIN = "admin_fin"                   # salió del menú de administración
 CONSULTA_USUARIOS = "consulta_usuarios"   # abrió la lista de usuarios
 ALTA_USUARIO = "alta_usuario"             # dio de alta a un usuario nuevo
 ENROLAMIENTO = "enrolamiento"             # registró el rostro de un usuario existente
+CAMBIO_ROL = "cambio_rol"                 # cambió (o intentó cambiar) el rol de un usuario
 ACCION_RECHAZADA = "accion_rechazada"     # pidió algo que su rol no permite
 PETICION_RECHAZADA = "peticion_rechazada" # la API recibió una petición inválida
 FALLO_TECNICO = "fallo_tecnico"           # cámara, base de datos, error inesperado
