@@ -4,11 +4,13 @@ import com.controlaccesorpi.mobile.model.AccessRequest
 import com.controlaccesorpi.mobile.model.AccessResult
 import com.controlaccesorpi.mobile.model.ResultStatus
 import com.controlaccesorpi.mobile.model.User
+import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Base64
 
 /** The Raspberry Pi could not be reached or did not give a usable answer. */
 class ConnectionException(message: String, cause: Throwable? = null) : IOException(message, cause)
@@ -23,6 +25,8 @@ class RaspberryClient(
     private val connectTimeoutMs: Int = 5_000,
     // A request waits while the LED, the sound and the motor finish.
     private val readTimeoutMs: Int = 20_000,
+    // Recognizing the face on the Raspberry Pi takes longer than a key.
+    private val faceReadTimeoutMs: Int = 45_000,
 ) {
     private val baseUrl: String = baseUrl.trim().trimEnd('/')
 
@@ -73,6 +77,39 @@ class RaspberryClient(
         return AccessResult.fromJson(response.body)
     }
 
+    /**
+     * Sends JPEG photos of the user's face for the facial access (FR-22).
+     * The Raspberry Pi identifies the face and decides; the photos are not
+     * kept anywhere (NFR-14).
+     *
+     * Returns the `result` the Raspberry Pi answered and the user's name:
+     * a validation result when the face was recognized, or
+     * `rostro_no_reconocido`, `sin_rostro`, `rostro_no_disponible`.
+     *
+     * @throws ConnectionException when there is no usable answer.
+     */
+    @Throws(ConnectionException::class)
+    fun sendFaceRequest(photos: List<ByteArray>): FaceAnswer {
+        val images = JSONArray()
+        photos.forEach { images.put(Base64.getEncoder().encodeToString(it)) }
+        val body = JSONObject().put("images", images).toString()
+
+        val response = call("POST", "/api/access/face", body, readTimeoutMs = faceReadTimeoutMs)
+        // 200 and 503 both carry a result; anything else is technical.
+        if (response.status != HttpURLConnection.HTTP_OK &&
+            response.status != HttpURLConnection.HTTP_UNAVAILABLE
+        ) {
+            throw ConnectionException("Unexpected answer to the facial access: HTTP ${response.status}")
+        }
+        val json = parse(response.body)
+        val result = json.optString("result")
+        if (result.isEmpty()) throw ConnectionException("The facial access answer has no result")
+        return FaceAnswer(result, if (json.isNull("name")) null else json.optString("name"))
+    }
+
+    /** What the Raspberry Pi answered to the photos. */
+    data class FaceAnswer(val result: String, val name: String?)
+
     private class Response(val status: Int, val body: String)
 
     private fun parse(body: String): JSONObject =
@@ -82,7 +119,12 @@ class RaspberryClient(
             throw ConnectionException("The Raspberry Pi sent an answer that is not valid JSON", error)
         }
 
-    private fun call(method: String, path: String, body: String?): Response {
+    private fun call(
+        method: String,
+        path: String,
+        body: String?,
+        readTimeoutMs: Int = this.readTimeoutMs,
+    ): Response {
         var connection: HttpURLConnection? = null
         try {
             connection = URL(baseUrl + path).openConnection() as HttpURLConnection

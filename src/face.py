@@ -32,6 +32,13 @@ try:
 except ImportError:
     DeepFace = None
 
+# OpenCV solo se usa aquí para decodificar las fotos que manda la app
+# (FR-22). Sin él, el acceso facial desde la app no está disponible.
+try:
+    import cv2
+except ImportError:
+    cv2 = None
+
 
 # Motivos que puede devolver identificar()
 SIN_ROSTRO = "sin_rostro"
@@ -45,6 +52,9 @@ ERROR_BD = "error_bd"
 ESPERA_ROSTRO = 10
 
 _lock = threading.RLock()
+# La app (hilo de la API) y la GUI pueden pedir un embedding al mismo
+# tiempo: el modelo atiende a uno a la vez.
+_lock_modelo = threading.Lock()
 _plantillas = None   # [(usuario_id, vector np.float32)]
 _modelo_ok = None    # None = aún no probado, True = cargado, False = falló
 
@@ -66,12 +76,13 @@ def precargar():
         return False, "DeepFace no está instalado"
     try:
         en_blanco = np.zeros((224, 224, 3), dtype=np.uint8)
-        DeepFace.represent(
-            img_path=en_blanco,
-            model_name=RECONOCIMIENTO_MODELO,
-            detector_backend=RECONOCIMIENTO_DETECTOR,
-            enforce_detection=False,
-        )
+        with _lock_modelo:
+            DeepFace.represent(
+                img_path=en_blanco,
+                model_name=RECONOCIMIENTO_MODELO,
+                detector_backend=RECONOCIMIENTO_DETECTOR,
+                enforce_detection=False,
+            )
     except Exception as error:
         _modelo_ok = False
         return False, f"No se pudo cargar el modelo {RECONOCIMIENTO_MODELO}: {error}"
@@ -141,13 +152,14 @@ def obtener_embedding(fotograma):
         return None
 
     try:
-        representaciones = DeepFace.represent(
-            img_path=fotograma,
-            model_name=RECONOCIMIENTO_MODELO,
-            detector_backend=RECONOCIMIENTO_DETECTOR,
-            enforce_detection=True,
-            align=True,
-        )
+        with _lock_modelo:
+            representaciones = DeepFace.represent(
+                img_path=fotograma,
+                model_name=RECONOCIMIENTO_MODELO,
+                detector_backend=RECONOCIMIENTO_DETECTOR,
+                enforce_detection=True,
+                align=True,
+            )
     except ValueError:
         # DeepFace lanza ValueError cuando no encuentra un rostro.
         return None
@@ -235,6 +247,58 @@ def identificar(capturar, intentos=None, espera=None):
             time.sleep(0.1)
             continue
 
+        embedding = obtener_embedding(fotograma)
+        if embedding is None:
+            continue
+
+        comparaciones += 1
+        usuario_id, distancia = comparar(embedding)
+        if usuario_id is not None:
+            return usuario_id, distancia, None
+        if distancia is not None and (mejor_distancia is None or distancia < mejor_distancia):
+            mejor_distancia = distancia
+
+    if comparaciones == 0:
+        return None, None, SIN_ROSTRO
+    return None, mejor_distancia, DESCONOCIDO
+
+
+# ----------------------- fotos desde la app (FR-22) -----------------------
+
+def disponible_para_imagenes():
+    """True si se pueden identificar fotos enviadas por la app."""
+    return disponible() and cv2 is not None
+
+
+def decodificar_imagen(datos):
+    """
+    Convierte los bytes de una foto (JPEG o PNG) en un arreglo BGR, como
+    los fotogramas de la cámara. Devuelve None si no es una imagen. La
+    foto solo vive en memoria: nunca se escribe a disco (NFR-14).
+    """
+    if cv2 is None or not datos:
+        return None
+    imagen = cv2.imdecode(np.frombuffer(datos, dtype=np.uint8), cv2.IMREAD_COLOR)
+    if imagen is None or imagen.size == 0:
+        return None
+    return imagen
+
+
+def identificar_imagenes(fotogramas):
+    """
+    Igual que identificar(), pero con fotos ya tomadas (las que manda la
+    app desde la cámara del teléfono) en lugar de la cámara de la
+    Raspberry. Devuelve lo mismo: (usuario_id, distancia, motivo).
+    """
+    if not disponible():
+        return None, None, NO_DISPONIBLE
+
+    if cargar_plantillas() is None:
+        return None, None, ERROR_BD
+
+    mejor_distancia = None
+    comparaciones = 0
+    for fotograma in fotogramas:
         embedding = obtener_embedding(fotograma)
         if embedding is None:
             continue

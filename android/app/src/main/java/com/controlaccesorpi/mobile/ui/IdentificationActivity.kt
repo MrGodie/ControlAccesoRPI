@@ -2,13 +2,10 @@ package com.controlaccesorpi.mobile.ui
 
 import android.content.Intent
 import android.os.Bundle
-import android.text.InputType
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
-import android.widget.FrameLayout
 import android.widget.TextView
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.controlaccesorpi.mobile.AccessApp
@@ -19,8 +16,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * First view: the user types their code and key. It only shows the form
- * and the outcome; identifying is done by AccessManager.
+ * The user types their code and key. It only shows the form and the
+ * outcome; identifying is done by AccessManager. It opens from the camera
+ * view, by choice or because the facial access did not work (FR-22).
  */
 class IdentificationActivity : AppCompatActivity() {
 
@@ -43,7 +41,12 @@ class IdentificationActivity : AppCompatActivity() {
         progress = findViewById(R.id.progress)
 
         identifyButton.setOnClickListener { onIdentifyClicked() }
-        findViewById<Button>(R.id.connectionButton).setOnClickListener { askServerAddress() }
+        findViewById<Button>(R.id.connectionButton).setOnClickListener {
+            askServerAddress { showError(null) }
+        }
+
+        // Coming from a facial access that did not work: say why (FR-22).
+        intent.getStringExtra(EXTRA_MESSAGE)?.let { showError(it) }
     }
 
     /** Every time this view comes back, the operation starts from zero (FR-19). */
@@ -91,27 +94,8 @@ class IdentificationActivity : AppCompatActivity() {
         progress.visibility = if (busy) View.VISIBLE else View.INVISIBLE
     }
 
-    private fun askServerAddress() {
-        val field = EditText(this).apply {
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
-            setText(app.settings.address)
-            setSelection(text.length)
-        }
-        val margin = resources.getDimensionPixelSize(R.dimen.dialog_margin)
-        val container = FrameLayout(this).apply {
-            setPadding(margin, margin / 2, margin, 0)
-            addView(field)
-        }
-
-        AlertDialog.Builder(this)
-            .setTitle(R.string.connection_title)
-            .setMessage(R.string.connection_message)
-            .setView(container)
-            .setPositiveButton(R.string.connection_save) { _, _ ->
-                app.changeServerAddress(field.text.toString())
-                showError(null)
-            }
-            .setNegativeButton(R.string.cancel, null)
-            .show()
+    companion object {
+        /** Why the facial access sent the user here; shown above the form. */
+        const val EXTRA_MESSAGE = "com.controlaccesorpi.mobile.FALLBACK_MESSAGE"
     }
 }

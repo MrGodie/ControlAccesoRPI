@@ -2,6 +2,7 @@ package com.controlaccesorpi.mobile.logic
 
 import com.controlaccesorpi.mobile.model.AccessResult
 import com.controlaccesorpi.mobile.model.AppState
+import com.controlaccesorpi.mobile.model.ResultStatus
 import com.controlaccesorpi.mobile.model.User
 import com.controlaccesorpi.mobile.network.ConnectionException
 import com.controlaccesorpi.mobile.network.RaspberryClient
@@ -29,6 +30,27 @@ enum class PresenceStatus {
     UNREACHABLE,
 }
 
+/** What happened with the facial access (FR-22). */
+enum class FaceOutcome {
+    /** The face was recognized and the Raspberry Pi decided: see [AccessManager.lastResult]. */
+    RESULT,
+
+    /** There was a face, but it does not match any registered user. */
+    NOT_RECOGNIZED,
+
+    /** None of the photos had a face. */
+    NO_FACE,
+
+    /** Facial recognition is turned off or not installed on the Raspberry Pi. */
+    UNAVAILABLE,
+
+    /** Technical failure on the Raspberry Pi (database). Never a denial. */
+    SYSTEM_ERROR,
+
+    /** The Raspberry Pi could not be reached. */
+    CONNECTION_ERROR,
+}
+
 /**
  * The rules of one access operation: who is identified, whether the
  * request is enabled, and what the last result was. It knows nothing about
@@ -50,6 +72,10 @@ class AccessManager(private val client: RaspberryClient) {
     @Volatile
     var lastResult: AccessResult? = null
         private set
+
+    /** Last presence answer seen by the camera view (FR-22). */
+    @Volatile
+    private var presentForFace = false
 
     /** Identifies the user with the text typed in the form. */
     @Synchronized
@@ -109,11 +135,79 @@ class AccessManager(private val client: RaspberryClient) {
         return result
     }
 
+    /**
+     * Presence check for the camera view: the facial access is enabled
+     * under the same condition as the request with code and key (FR-16,
+     * FR-22). Nobody is identified yet, so it only remembers whether the
+     * Raspberry Pi saw someone. The screen calls it every [PRESENCE_POLL_MS].
+     */
+    @Synchronized
+    fun checkPresenceForFace(): PresenceStatus {
+        if (state != AppState.IDLE) {
+            presentForFace = false
+            return PresenceStatus.ABSENT
+        }
+        val present = try {
+            client.getPresence()
+        } catch (_: ConnectionException) {
+            presentForFace = false
+            return PresenceStatus.UNREACHABLE
+        }
+        presentForFace = present
+        return if (present) PresenceStatus.PRESENT else PresenceStatus.ABSENT
+    }
+
+    /** True only while nobody is identified and presence has been detected. */
+    fun canRequestAccessByFace(): Boolean = presentForFace && state == AppState.IDLE
+
+    /**
+     * Facial access (FR-22): sends the photos and lets the Raspberry Pi
+     * identify the face and decide. Only a recognized face ends in a
+     * result screen; anything else returns to the start so the user can
+     * use their code and key. A recognized user without access gets the
+     * denial: their key would give the same answer.
+     *
+     * @throws IllegalStateException if there is no presence (FR-16).
+     */
+    @Synchronized
+    fun requestAccessByFace(photos: List<ByteArray>): FaceOutcome {
+        check(canRequestAccessByFace()) { "The facial access is not enabled" }
+        reset()
+        if (photos.isEmpty()) return FaceOutcome.NO_FACE
+
+        state = AppState.SENDING
+        val answer = try {
+            client.sendFaceRequest(photos)
+        } catch (_: ConnectionException) {
+            reset()
+            return FaceOutcome.CONNECTION_ERROR
+        }
+
+        val outcome = when (answer.result) {
+            "rostro_no_reconocido" -> FaceOutcome.NOT_RECOGNIZED
+            "sin_rostro" -> FaceOutcome.NO_FACE
+            "rostro_no_disponible" -> FaceOutcome.UNAVAILABLE
+            else -> when (ResultStatus.fromApi(answer.result)) {
+                ResultStatus.AUTHORIZED, ResultStatus.DENIED_NO_PERMISSION -> FaceOutcome.RESULT
+                else -> FaceOutcome.SYSTEM_ERROR
+            }
+        }
+
+        if (outcome != FaceOutcome.RESULT) {
+            reset()
+            return outcome
+        }
+        lastResult = AccessResult(ResultStatus.fromApi(answer.result), answer.name)
+        state = AppState.SHOWING_RESULT
+        return outcome
+    }
+
     /** Back to the initial state, forgetting the identification data (FR-19). */
     @Synchronized
     fun reset() {
         currentUser = null
         lastResult = null
+        presentForFace = false
         state = AppState.IDLE
     }
 

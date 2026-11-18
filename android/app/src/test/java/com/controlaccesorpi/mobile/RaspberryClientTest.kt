@@ -125,4 +125,33 @@ class RaspberryClientTest {
         pi.answer("/api/presence", 200, """{"present": true}""")
         assertTrue(RaspberryClient(pi.baseUrl + "/").getPresence())
     }
+
+    @Test
+    fun `the face photos go as base64 and the answer comes back as is`() {
+        pi.answer("/api/access/face", 200, """{"result": "autorizado", "name": "Ana"}""")
+        val photos = listOf(byteArrayOf(1, 2, 3), byteArrayOf(4, 5))
+
+        val answer = client.sendFaceRequest(photos)
+        assertEquals(RaspberryClient.FaceAnswer("autorizado", "Ana"), answer)
+
+        val sent = JSONObject(pi.callsTo("/api/access/face").single().body).getJSONArray("images")
+        assertEquals(2, sent.length())
+        assertEquals(java.util.Base64.getEncoder().encodeToString(byteArrayOf(1, 2, 3)), sent.getString(0))
+    }
+
+    @Test
+    fun `a face answer of 503 still carries its result`() {
+        pi.answer("/api/access/face", 503, """{"result": "rostro_no_disponible"}""")
+        assertEquals("rostro_no_disponible", client.sendFaceRequest(listOf(byteArrayOf(1))).result)
+    }
+
+    @Test
+    fun `a face answer without a result is a connection problem`() {
+        pi.answer("/api/access/face", 500, """{"result": "error_sistema"}""")
+        assertThrows(ConnectionException::class.java) { client.sendFaceRequest(listOf(byteArrayOf(1))) }
+        pi.answer("/api/access/face", 200, "not json")
+        assertThrows(ConnectionException::class.java) { client.sendFaceRequest(listOf(byteArrayOf(1))) }
+        val offline = RaspberryClient(deadUrl(), connectTimeoutMs = 500, readTimeoutMs = 500)
+        assertThrows(ConnectionException::class.java) { offline.sendFaceRequest(listOf(byteArrayOf(1))) }
+    }
 }

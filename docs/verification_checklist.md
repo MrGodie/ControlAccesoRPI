@@ -69,6 +69,18 @@ With the API running. Each one must behave as it did before Integrativo 4.
 | D5 | The system starts with the API turned off (`API_ACTIVA = False`) | It starts and D1 works | | |
 | D6 | An access from the app while the graphical interface is showing a result | The two reactions happen one after the other, never at the same time | | |
 
+## E. Facial access from the app (FR-22)
+
+| # | Step | Expected | Result | Evidence |
+| :--- | :--- | :--- | :--- | :--- |
+| E0 | Open the app with nobody in front of the PIR | "Entrar con rostro" is disabled and the view says "Acércate al punto de acceso…" | | |
+| E1 | With presence detected, a user with a registered face taps "Entrar con rostro" | Green view "Acceso autorizado" with their name; LED, sound and motor as in A | | |
+| E2 | The attempt is logged | A new row in `intentos_acceso` with `metodo = 'app_facial'` | | |
+| E3 | A person without a registered face tries | The app goes to the form with "No te reconocimos. Usa tu código y clave."; no LED, no motor | | |
+| E4 | Cover the camera and try | The form with "No se detectó tu rostro. Usa tu código y clave." | | |
+| E5 | A registered face of a user without access | Red view "Acceso rechazado"; the app does not offer the code and key | | |
+| E6 | The photos are not kept | No new files on the phone's gallery or on the Raspberry Pi | | |
+
 ## Notes for the run
 
 - The person with the phone also triggers the access cycle of the Raspberry Pi, because the PIR starts both. If that person has a registered face, the facial recognition can open the door before the app does. Decide beforehand who stands in front of the camera, or run A with `RECONOCIMIENTO_ACTIVO = False`.

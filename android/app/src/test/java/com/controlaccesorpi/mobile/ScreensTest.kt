@@ -8,6 +8,7 @@ import android.widget.EditText
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import com.controlaccesorpi.mobile.model.AppState
+import com.controlaccesorpi.mobile.ui.FaceActivity
 import com.controlaccesorpi.mobile.ui.IdentificationActivity
 import com.controlaccesorpi.mobile.ui.RequestActivity
 import com.controlaccesorpi.mobile.ui.ResultActivity
@@ -88,6 +89,41 @@ class ScreensTest {
 
     private fun title(screen: ResultActivity) = screen.findViewById<TextView>(R.id.resultTitle).text.toString()
     private fun detail(screen: ResultActivity) = screen.findViewById<TextView>(R.id.resultDetail).text.toString()
+
+    @Test
+    fun `the form says why the face did not work`() {
+        val intent = Intent(app, IdentificationActivity::class.java)
+            .putExtra(IdentificationActivity.EXTRA_MESSAGE, app.getString(R.string.face_not_recognized))
+        val screen = Robolectric.buildActivity(IdentificationActivity::class.java, intent).setup().get()
+        val message = screen.findViewById<TextView>(R.id.messageText)
+
+        assertEquals(View.VISIBLE, message.visibility)
+        assertEquals(app.getString(R.string.face_not_recognized), message.text.toString())
+    }
+
+    @Test
+    fun `the camera view leads to the code and key form`() {
+        val screen = Robolectric.buildActivity(FaceActivity::class.java).setup().get()
+        // There is no camera on the PC: the face button stays off and nothing is sent.
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse(screen.findViewById<Button>(R.id.faceButton).isEnabled)
+
+        screen.findViewById<Button>(R.id.codeButton).performClick()
+        val next = nextScreen()
+        assertEquals(IdentificationActivity::class.java.name, next?.component?.className)
+        assertNull(next?.getStringExtra(IdentificationActivity.EXTRA_MESSAGE))
+        assertTrue(pi.callsTo("/api/access/face").isEmpty())
+    }
+
+    @Test
+    fun `the camera view asks for presence before the face`() {
+        pi.answer("/api/presence", 200, """{"present": true}""")
+        val screen = Robolectric.buildActivity(FaceActivity::class.java).setup().get()
+        await("a presence check from the camera view") { pi.callsTo("/api/presence").isNotEmpty() }
+        // Presence alone is not enough here: there is no camera on the PC.
+        assertFalse(screen.findViewById<Button>(R.id.faceButton).isEnabled)
+        assertTrue(pi.callsTo("/api/access/face").isEmpty())
+    }
 
     @Test
     fun `a wrong code or key shows one message and stays on the form`() {

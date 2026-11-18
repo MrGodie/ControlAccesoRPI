@@ -3,6 +3,21 @@
     <string name="app_name">Control de Acceso</string>
     <string name="cancel">Cancelar</string>
 
+    <!-- View 0: facial access (FR-22) -->
+    <string name="face_subtitle">Mira a la cámara para entrar con tu rostro</string>
+    <string name="face_button">Entrar con rostro</string>
+    <string name="face_code_button">Usar código y clave</string>
+    <string name="face_presence_detected">Presencia detectada.\nYa puedes entrar con tu rostro.</string>
+    <string name="face_capturing">Mantente quieto, tomando fotos…</string>
+    <string name="face_sending">Reconociendo tu rostro…</string>
+    <string name="face_note">Las fotos se envían al punto de acceso y no se guardan.</string>
+    <string name="face_no_camera">No se pudo abrir la cámara. Usa tu código y clave.</string>
+    <string name="face_no_permission">Sin permiso para usar la cámara. Usa tu código y clave.</string>
+    <string name="face_not_recognized">No te reconocimos. Usa tu código y clave.</string>
+    <string name="face_no_face">No se detectó tu rostro. Usa tu código y clave.</string>
+    <string name="face_unavailable">El reconocimiento facial no está disponible en el punto de acceso. Usa tu código y clave.</string>
+    <string name="face_system_error">El sistema tuvo un problema técnico con el reconocimiento. No es un rechazo; usa tu código y clave.</string>
+
     <!-- View 1: identification -->
     <string name="identify_subtitle">Identifícate para solicitar acceso</string>
     <string name="identify_id_hint">Código de usuario</string>
