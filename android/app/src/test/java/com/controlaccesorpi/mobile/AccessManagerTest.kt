@@ -2,7 +2,6 @@ package com.controlaccesorpi.mobile
 
 import com.controlaccesorpi.mobile.logic.AccessManager
 import com.controlaccesorpi.mobile.logic.IdentifyOutcome
-import com.controlaccesorpi.mobile.logic.PresenceStatus
 import com.controlaccesorpi.mobile.model.AppState
 import com.controlaccesorpi.mobile.model.ResultStatus
 import com.controlaccesorpi.mobile.network.RaspberryClient
@@ -39,14 +38,6 @@ class AccessManagerTest {
         identifyAna()
         assertEquals(AppState.IDENTIFIED, manager.state)
         assertEquals("Ana", manager.currentUser?.name)
-
-        pi.answer("/api/presence", 200, """{"present": false}""")
-        assertEquals(PresenceStatus.ABSENT, manager.checkPresence())
-        assertFalse(manager.canRequestAccess())
-
-        pi.answer("/api/presence", 200, """{"present": true}""")
-        assertEquals(PresenceStatus.PRESENT, manager.checkPresence())
-        assertEquals(AppState.READY, manager.state)
         assertTrue(manager.canRequestAccess())
 
         pi.answer("/api/access", 200, """{"result": "autorizado", "name": "Ana"}""")
@@ -85,48 +76,25 @@ class AccessManagerTest {
     }
 
     @Test
-    fun `the request is not enabled without presence`() {
+    fun `the request is enabled without asking the PIR sensor`() {
         identifyAna()
-        pi.answer("/api/presence", 200, """{"present": false}""")
-        manager.checkPresence()
+        pi.answer("/api/access", 200, """{"result": "autorizado", "name": "Ana"}""")
 
-        assertThrows(IllegalStateException::class.java) { manager.requestAccess() }
-        assertTrue(pi.callsTo("/api/access").isEmpty())
+        manager.requestAccess()
+        assertEquals(1, pi.callsTo("/api/access").size)
+        assertTrue("the app must not ask for presence", pi.callsTo("/api/presence").isEmpty())
     }
 
     @Test
     fun `the request is not enabled before identifying`() {
-        pi.answer("/api/presence", 200, """{"present": true}""")
-        assertEquals(PresenceStatus.ABSENT, manager.checkPresence())
-        assertTrue("presence alone must not enable anything", pi.callsTo("/api/presence").isEmpty())
+        assertFalse(manager.canRequestAccess())
         assertThrows(IllegalStateException::class.java) { manager.requestAccess() }
-    }
-
-    @Test
-    fun `presence going away disables the request again`() {
-        identifyAna()
-        pi.answer("/api/presence", 200, """{"present": true}""")
-        manager.checkPresence()
-        pi.answer("/api/presence", 200, """{"present": false}""")
-        manager.checkPresence()
-        assertFalse(manager.canRequestAccess())
-    }
-
-    @Test
-    fun `losing the Raspberry Pi disables the request`() {
-        identifyAna()
-        pi.answer("/api/presence", 200, """{"present": true}""")
-        manager.checkPresence()
-        pi.answer("/api/presence", 500, "boom")
-        assertEquals(PresenceStatus.UNREACHABLE, manager.checkPresence())
-        assertFalse(manager.canRequestAccess())
+        assertTrue(pi.calls.isEmpty())
     }
 
     @Test
     fun `a denied request is reported as denied`() {
         identifyAna()
-        pi.answer("/api/presence", 200, """{"present": true}""")
-        manager.checkPresence()
         pi.answer("/api/access", 200, """{"result": "denegado_sin_permiso", "name": "Ana"}""")
 
         val result = manager.requestAccess()
@@ -138,8 +106,6 @@ class AccessManagerTest {
     @Test
     fun `a technical failure during the request is not reported as denied`() {
         identifyAna()
-        pi.answer("/api/presence", 200, """{"present": true}""")
-        manager.checkPresence()
         pi.answer("/api/access", 200, """{"result": "error_sistema", "name": null}""")
 
         val result = manager.requestAccess()
@@ -151,8 +117,6 @@ class AccessManagerTest {
     @Test
     fun `a request cannot be sent twice for the same operation`() {
         identifyAna()
-        pi.answer("/api/presence", 200, """{"present": true}""")
-        manager.checkPresence()
         pi.answer("/api/access", 200, """{"result": "autorizado", "name": "Ana"}""")
         manager.requestAccess()
 

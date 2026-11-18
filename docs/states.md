@@ -7,7 +7,8 @@ stateDiagram-v2
 
     Idle --> PresenceDetected: PIR active
     PresenceDetected --> Idle: timeout
-    PresenceDetected --> Validating: face, GUI, buttons or app request
+    PresenceDetected --> Validating: face, GUI or buttons
+    Idle --> Validating: app request (no presence needed)
 
     Validating --> Authorized: active user, role allows access
     Validating --> Denied: unknown or no permission
@@ -25,10 +26,9 @@ stateDiagram-v2
     IDLE --> IDENTIFIED: user recognized
     IDLE --> IDLE: not recognized or no connection
 
-    IDENTIFIED --> READY: PIR presence = true
-    IDENTIFIED --> IDLE: timeout or cancel
+    IDENTIFIED --> IDLE: cancel
 
-    READY --> SENDING: tap Request access
+    IDENTIFIED --> SENDING: tap Request access
     SENDING --> SHOWING_RESULT: answer received
     SENDING --> SHOWING_RESULT: timeout, technical error
 
