@@ -91,6 +91,7 @@ The system implements a modular architecture under the src/ directory to guarant
 
 Integrativo 4 adds a mobile application as a new way to request access. It is meant for users only and works alongside the existing access methods (physical buttons, graphical interface and facial recognition), which keep working unchanged (NFR-10).
 
+*   *Facial access first:* the app opens on the front camera. The photos go to the Raspberry Pi, which identifies the face and decides (FR-22). If the face is not recognized, no face is seen or facial recognition is not available, the app goes to the code and key form and says why; a recognized user without access gets the denial.
 *   *Identification:* the user identifies themselves in the app with their user code and password (FR-15).
 *   *Request after identifying:* the access request is enabled as soon as the user is identified. The app does not wait for the PIR sensor; the Raspberry Pi decides the result (FR-16).
 *   *Result in the app:* the app shows whether access was authorized, denied, or could not be completed due to a technical condition. A technical failure is never shown as a denial (FR-17, FR-18, NFR-11).
@@ -108,19 +109,20 @@ The app is organized in three layers that do not mix:
 
 | Layer | Classes | Responsibility |
 | :--- | :--- | :--- |
-| Interface | `IdentificationActivity`, `RequestActivity`, `ResultActivity` | Show the three views and forward the taps |
+| Interface | `FaceActivity`, `IdentificationActivity`, `RequestActivity`, `ResultActivity` | Show the views, take the photos and forward the taps |
 | Logic | `AccessManager` | Who is identified, whether the request is enabled, the last result |
 | Communication | `RaspberryClient` | HTTP requests to the Raspberry Pi, and nothing else |
 
-The Raspberry Pi serves three routes, on port 8000 by default (`API_PUERTO` in `src/config.py`):
+The Raspberry Pi serves four routes, on port 8000 by default (`API_PUERTO` in `src/config.py`):
 
 | Method | Route | Purpose |
 | :--- | :--- | :--- |
 | `POST` | `/api/login` | Identify the user (FR-15) |
 | `GET` | `/api/presence` | Has the PIR sensor detected presence? Still served, but the app no longer uses it (PIC-115) |
 | `POST` | `/api/access` | Request access and receive the result (FR-17, FR-18) |
+| `POST` | `/api/access/face` | Request access with up to three photos of the face (FR-22) |
 
-`/api/access` calls `validator.verificar_usuario()` and then `controller.procesar_resultado()`, the same functions the other access methods use. The API runs in its own thread next to the access cycle; if it cannot start, the system starts anyway and the other methods keep working.
+`/api/access` calls `validator.verificar_usuario()` and then `controller.procesar_resultado()`, the same functions the other access methods use. `/api/access/face` identifies the photos with `face.identificar_imagenes()`, the same model and templates as the camera of the Raspberry Pi, then calls `validator.verificar_rostro()` and `controller.procesar_resultado()` with method `app_facial`. The photos are only decoded in memory and never stored (NFR-14). The API runs in its own thread next to the access cycle; if it cannot start, the system starts anyway and the other methods keep working.
 
 ### Installation
 
@@ -131,7 +133,7 @@ The Raspberry Pi serves three routes, on port 8000 by default (`API_PUERTO` in `
 | :--- | :--- |
 | Platform and SDK | Android 8.0 or newer on the phone. To build: JDK 17 or newer and the Android SDK (platform 35, build-tools 35.0.0), or Android Studio |
 | Build | Open the `android/` folder in Android Studio, or run `./gradlew assembleDebug` inside it. The APK is written to `android/app/build/outputs/apk/debug/` |
-| Deployment to the phone | Run the app from Android Studio with the phone connected by USB, or copy `app-debug.apk` to the phone and install it |
+| Deployment to the phone | Run the app from Android Studio with the phone connected by USB, or copy `app-debug.apk` to the phone and install it. The first time it asks for the camera; without it, the app still works with code and key |
 | Connecting the app to the Raspberry Pi | Phone and Raspberry Pi on the same network. In the first view, tap **Conexión** and type the address of the Raspberry Pi, for example `192.168.1.50:8000` |
 
 The API needs nothing new on the Raspberry Pi: it uses the Python standard library. It starts with the system (`python3 src/controller.py`) and can be turned off with `API_ACTIVA = False` in `src/config.py`.
@@ -158,7 +160,7 @@ RASPBERRY_URL=http://<pi-address>:8000 RASPBERRY_USER_ID=<id> RASPBERRY_PIN=<key
 python tools/simulated_api.py
 ```
 
-In the first view of the app, tap **Conexión** and type `10.0.2.2:8000` from the Android Studio emulator, or `<PC address>:8000` from a phone on the same Wi-Fi. While it runs, type `e` to toggle a database failure and `q` to stop. `p` toggles the presence of the PIR sensor, which the app no longer needs.
+In the first view of the app, tap **Conexión** and type `10.0.2.2:8000` from the Android Studio emulator, or `<PC address>:8000` from a phone on the same Wi-Fi. While it runs, type `e` to toggle a database failure, `f` to change what the facial access answers (user 1, user 2, unknown face, no face, not available) and `q` to stop. `p` toggles the presence of the PIR sensor, which the app no longer needs.
 
 | Code | Key | Result |
 | :--- | :--- | :--- |

@@ -37,7 +37,7 @@ Jira project: **PIC** (ControlAccesoRPI) · Repository: `MrGodie/ControlAccesoRP
 | **FR-19** App returns to its initial state when the operation ends | PIC-105, PIC-100, PIC-89 | #106, #107 | Automated on a PC (`AccessManager.reset()`; result view closes by itself and the form comes back empty in `ScreensTest`); pending on a phone (PIC-107) |
 | **FR-20** Same validation logic for the app as for the existing access methods | PIC-105, PIC-97 | #104 | By inspection: `src/api_server.py` calls `validator.verificar_usuario()` and has no permission check of its own; Automated on a PC with the real `validator` and `controller` |
 | **FR-21** User management from the app with the same role capabilities as the GUI | PIC-108, PIC-90, PIC-99, PIC-112 | #110 | Pending — not implemented |
-| **FR-22** Facial access from the app with the phone camera, decided on the Raspberry Pi | PIC-108, PIC-111 | #110 | Pending — not implemented |
+| **FR-22** Facial access from the app with the phone camera, decided on the Raspberry Pi | PIC-108, PIC-111 | #110 | Pending — implemented in PIC-111 (`POST /api/access/face`, `face.identificar_imagenes`, `FaceActivity`). Automated on a PC: the API with the real `face.py` and a simulated model; the app with `AccessManagerTest`, `RaspberryClientTest` and `ScreensTest`. Not yet run on the Raspberry Pi or on a phone |
 | **FR-23** Log every relevant event, not only access attempts | PIC-108, PIC-109 | #110, #111 | Pending — implemented in #111 (`src/bitacora.py`, table `eventos`), tested on a PC against a throwaway MySQL; not yet run on the Raspberry Pi |
 | **FR-24** Without connection the app never reports access as authorized and disables administration | PIC-108, PIC-113 | #110 | Pending — not implemented |
 | **FR-25** Events produced without connection are queued on the phone and synced once | PIC-108, PIC-113 | #110 | Pending — not implemented |
@@ -60,7 +60,7 @@ Jira project: **PIC** (ControlAccesoRPI) · Repository: `MrGodie/ControlAccesoRP
 | **NFR-11** A technical failure in the app is never reported or logged as "access denied" | PIC-105, PIC-97, PIC-100, PIC-89 | #104, #106, #107 | Automated on a PC: database down, Raspberry Pi unreachable, no answer in time and unknown answers are reported as a technical failure; pending on the real Raspberry Pi and on a phone (PIC-107) |
 | **NFR-12** Credential sent once; session token that expires; every admin request re-checked on the Raspberry Pi | PIC-108, PIC-110 | #110 | Pending — not implemented |
 | **NFR-13** The phone never stores credentials, templates, images or the user list; only pending events | PIC-108, PIC-113 | #110 | Pending — not implemented |
-| **NFR-14** Face images from the phone are only processed on the Raspberry Pi and discarded | PIC-108, PIC-111 | #110 | Pending — not implemented |
+| **NFR-14** Face images from the phone are only processed on the Raspberry Pi and discarded | PIC-108, PIC-111 | #110 | By inspection (PIC-111): the photos are decoded in memory (`face.decodificar_imagen`) and never written to disk, on the phone or on the Raspberry Pi |
 
 ## 3. Design and documentation artifacts
 

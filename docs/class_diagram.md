@@ -2,6 +2,12 @@
 classDiagram
     direction LR
 
+    class FaceActivity {
+        -startCamera()
+        -onFaceClicked()
+        -takePhoto(capture: ImageCapture) Pair~ByteArray, Int~?
+        -openForm(message: String?)
+    }
     class IdentificationActivity {
         -onIdentifyClicked()
         -showError(message: String?)
@@ -33,6 +39,7 @@ classDiagram
         +lastResult: AccessResult?
         +identify(userId: String, pin: String) IdentifyOutcome
         +canRequestAccess() Boolean
+        +requestAccessByFace(photos: List~ByteArray~) FaceOutcome
         +requestAccess() AccessResult
         +reset()
     }
@@ -43,6 +50,7 @@ classDiagram
         -readTimeoutMs: Int
         +identify(user: User) String?
         +sendRequest(request: AccessRequest) AccessResult
+        +sendFaceRequest(photos: List~ByteArray~) FaceAnswer
     }
 
     class User {
@@ -97,6 +105,18 @@ classDiagram
         CONNECTION_ERROR
     }
 
+    class FaceOutcome {
+        <<enumeration>>
+        RESULT
+        NOT_RECOGNIZED
+        NO_FACE
+        UNAVAILABLE
+        SYSTEM_ERROR
+        CONNECTION_ERROR
+    }
+
+    FaceActivity --> AccessApp : uses
+    FaceActivity ..> IdentificationActivity : fallback
     IdentificationActivity --> AccessApp : uses
     RequestActivity --> AccessApp : uses
     ResultActivity --> AccessApp : uses
@@ -110,6 +130,7 @@ classDiagram
     AccessManager "1" --> "0..1" AccessResult : lastResult
     AccessManager --> AppState
     AccessManager ..> IdentifyOutcome : returns
+    AccessManager ..> FaceOutcome : returns
 
     User ..> AccessRequest : creates
     RaspberryClient ..> AccessRequest : sends
