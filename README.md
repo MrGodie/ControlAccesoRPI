@@ -149,6 +149,24 @@ The tests run on the PC, without a phone: the logic and the HTTP client against 
 RASPBERRY_URL=http://<pi-address>:8000 RASPBERRY_USER_ID=<id> RASPBERRY_PIN=<key> ./gradlew testDebugUnitTest --tests "*LiveRaspberryTest*"
 ```
 
+### Trying the app without the Raspberry Pi
+
+`tools/simulated_api.py` serves the real `src/api_server.py` on a PC. Only the PIR sensor, the database and the physical reaction are simulated, so the app gets the same answers it gets from the Raspberry Pi. From the repository root:
+
+```
+python tools/simulated_api.py
+```
+
+In the first view of the app, tap **Conexión** and type `10.0.2.2:8000` from the Android Studio emulator, or `<PC address>:8000` from a phone on the same Wi-Fi. While it runs, type `p` to toggle the presence of the PIR sensor, `e` to toggle a database failure and `q` to stop.
+
+| Code | Key | Result |
+| :--- | :--- | :--- |
+| 1 | 123 | `autorizado` |
+| 2 | 456 | `denegado_sin_permiso` |
+| any other | any | `denegado_no_reconocido` |
+
+It never touches GPIO, the database or the access log. It does not replace the run on the real prototype (`docs/verification_checklist.md`).
+
 ### Known limitation
 
 The code and key travel over plain HTTP on the local network. They are stored hashed in the database, but they are not encrypted in transit. HTTPS or a session token is future work.
@@ -182,7 +200,8 @@ ControlAccesoRPI/
 │   ├── exito.wav
 │   └── fallo.wav
 ├── tools/
-│   └── generate_mobile_wireframes.py
+│   ├── generate_mobile_wireframes.py
+│   └── simulated_api.py
 ├── android/                 (mobile app, Kotlin)
 │   └── app/src/
 │       ├── main/java/com/controlaccesorpi/mobile/
