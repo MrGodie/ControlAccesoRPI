@@ -39,7 +39,7 @@
             android:screenOrientation="portrait"
             android:windowSoftInputMode="adjustResize" />
 
-        <!-- View 2: access request, enabled once the user is identified. -->
+        <!-- View 2: access request, enabled by presence. -->
         <activity
             android:name=".ui.RequestActivity"
             android:exported="false"

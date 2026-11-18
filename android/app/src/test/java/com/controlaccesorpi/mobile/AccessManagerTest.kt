@@ -3,6 +3,7 @@ package com.controlaccesorpi.mobile
 import com.controlaccesorpi.mobile.logic.AccessManager
 import com.controlaccesorpi.mobile.logic.FaceOutcome
 import com.controlaccesorpi.mobile.logic.IdentifyOutcome
+import com.controlaccesorpi.mobile.logic.PresenceStatus
 import com.controlaccesorpi.mobile.model.AppState
 import com.controlaccesorpi.mobile.model.ResultStatus
 import com.controlaccesorpi.mobile.network.RaspberryClient
@@ -39,6 +40,14 @@ class AccessManagerTest {
         identifyAna()
         assertEquals(AppState.IDENTIFIED, manager.state)
         assertEquals("Ana", manager.currentUser?.name)
+
+        pi.answer("/api/presence", 200, """{"present": false}""")
+        assertEquals(PresenceStatus.ABSENT, manager.checkPresence())
+        assertFalse(manager.canRequestAccess())
+
+        pi.answer("/api/presence", 200, """{"present": true}""")
+        assertEquals(PresenceStatus.PRESENT, manager.checkPresence())
+        assertEquals(AppState.READY, manager.state)
         assertTrue(manager.canRequestAccess())
 
         pi.answer("/api/access", 200, """{"result": "autorizado", "name": "Ana"}""")
@@ -77,25 +86,48 @@ class AccessManagerTest {
     }
 
     @Test
-    fun `the request is enabled without asking the PIR sensor`() {
+    fun `the request is not enabled without presence`() {
         identifyAna()
-        pi.answer("/api/access", 200, """{"result": "autorizado", "name": "Ana"}""")
+        pi.answer("/api/presence", 200, """{"present": false}""")
+        manager.checkPresence()
 
-        manager.requestAccess()
-        assertEquals(1, pi.callsTo("/api/access").size)
-        assertTrue("the app must not ask for presence", pi.callsTo("/api/presence").isEmpty())
+        assertThrows(IllegalStateException::class.java) { manager.requestAccess() }
+        assertTrue(pi.callsTo("/api/access").isEmpty())
     }
 
     @Test
     fun `the request is not enabled before identifying`() {
-        assertFalse(manager.canRequestAccess())
+        pi.answer("/api/presence", 200, """{"present": true}""")
+        assertEquals(PresenceStatus.ABSENT, manager.checkPresence())
+        assertTrue("presence alone must not enable anything", pi.callsTo("/api/presence").isEmpty())
         assertThrows(IllegalStateException::class.java) { manager.requestAccess() }
-        assertTrue(pi.calls.isEmpty())
+    }
+
+    @Test
+    fun `presence going away disables the request again`() {
+        identifyAna()
+        pi.answer("/api/presence", 200, """{"present": true}""")
+        manager.checkPresence()
+        pi.answer("/api/presence", 200, """{"present": false}""")
+        manager.checkPresence()
+        assertFalse(manager.canRequestAccess())
+    }
+
+    @Test
+    fun `losing the Raspberry Pi disables the request`() {
+        identifyAna()
+        pi.answer("/api/presence", 200, """{"present": true}""")
+        manager.checkPresence()
+        pi.answer("/api/presence", 500, "boom")
+        assertEquals(PresenceStatus.UNREACHABLE, manager.checkPresence())
+        assertFalse(manager.canRequestAccess())
     }
 
     @Test
     fun `a denied request is reported as denied`() {
         identifyAna()
+        pi.answer("/api/presence", 200, """{"present": true}""")
+        manager.checkPresence()
         pi.answer("/api/access", 200, """{"result": "denegado_sin_permiso", "name": "Ana"}""")
 
         val result = manager.requestAccess()
@@ -107,6 +139,8 @@ class AccessManagerTest {
     @Test
     fun `a technical failure during the request is not reported as denied`() {
         identifyAna()
+        pi.answer("/api/presence", 200, """{"present": true}""")
+        manager.checkPresence()
         pi.answer("/api/access", 200, """{"result": "error_sistema", "name": null}""")
 
         val result = manager.requestAccess()
@@ -118,6 +152,8 @@ class AccessManagerTest {
     @Test
     fun `a request cannot be sent twice for the same operation`() {
         identifyAna()
+        pi.answer("/api/presence", 200, """{"present": true}""")
+        manager.checkPresence()
         pi.answer("/api/access", 200, """{"result": "autorizado", "name": "Ana"}""")
         manager.requestAccess()
 
@@ -127,10 +163,47 @@ class AccessManagerTest {
 
     private val photo = listOf(byteArrayOf(1, 2, 3))
 
+    /** The PIR reports presence and the camera view has seen it (FR-16, FR-22). */
+    private fun faceEnabled(): AccessManager {
+        pi.answer("/api/presence", 200, """{"present": true}""")
+        assertEquals(PresenceStatus.PRESENT, manager.checkPresenceForFace())
+        return manager
+    }
+
+    @Test
+    fun `the facial access is not enabled without presence`() {
+        pi.answer("/api/presence", 200, """{"present": false}""")
+        assertEquals(PresenceStatus.ABSENT, manager.checkPresenceForFace())
+        assertFalse(manager.canRequestAccessByFace())
+        assertThrows(IllegalStateException::class.java) { manager.requestAccessByFace(photo) }
+        assertTrue(pi.callsTo("/api/access/face").isEmpty())
+
+        pi.answer("/api/presence", 500, "boom")
+        assertEquals(PresenceStatus.UNREACHABLE, manager.checkPresenceForFace())
+        assertFalse(manager.canRequestAccessByFace())
+    }
+
+    @Test
+    fun `each facial access needs presence again`() {
+        pi.answer("/api/access/face", 200, """{"result": "rostro_no_reconocido", "name": null}""")
+        assertEquals(FaceOutcome.NOT_RECOGNIZED, faceEnabled().requestAccessByFace(photo))
+        assertFalse(manager.canRequestAccessByFace())
+        assertThrows(IllegalStateException::class.java) { manager.requestAccessByFace(photo) }
+        assertEquals(1, pi.callsTo("/api/access/face").size)
+    }
+
+    @Test
+    fun `the camera view does not count presence while someone is identified`() {
+        identifyAna()
+        pi.answer("/api/presence", 200, """{"present": true}""")
+        assertEquals(PresenceStatus.ABSENT, manager.checkPresenceForFace())
+        assertFalse(manager.canRequestAccessByFace())
+    }
+
     @Test
     fun `a recognized face with access ends in the authorized result`() {
         pi.answer("/api/access/face", 200, """{"result": "autorizado", "name": "Hugo"}""")
-        assertEquals(FaceOutcome.RESULT, manager.requestAccessByFace(photo))
+        assertEquals(FaceOutcome.RESULT, faceEnabled().requestAccessByFace(photo))
         assertEquals(ResultStatus.AUTHORIZED, manager.lastResult?.status)
         assertEquals("Hugo", manager.lastResult?.userName)
         assertEquals(AppState.SHOWING_RESULT, manager.state)
@@ -140,7 +213,7 @@ class AccessManagerTest {
     @Test
     fun `a recognized face without access is a denial, not a fallback`() {
         pi.answer("/api/access/face", 200, """{"result": "denegado_sin_permiso", "name": "Beto"}""")
-        assertEquals(FaceOutcome.RESULT, manager.requestAccessByFace(photo))
+        assertEquals(FaceOutcome.RESULT, faceEnabled().requestAccessByFace(photo))
         assertEquals(ResultStatus.DENIED_NO_PERMISSION, manager.lastResult?.status)
     }
 
@@ -154,25 +227,25 @@ class AccessManagerTest {
         )
         for ((body, expected) in cases) {
             pi.answer("/api/access/face", 200, body)
-            assertEquals(body, expected, manager.requestAccessByFace(photo))
+            assertEquals(body, expected, faceEnabled().requestAccessByFace(photo))
             assertEquals(body, AppState.IDLE, manager.state)
             assertNull(body, manager.lastResult)
         }
         pi.answer("/api/access/face", 503, """{"result": "rostro_no_disponible"}""")
-        assertEquals(FaceOutcome.UNAVAILABLE, manager.requestAccessByFace(photo))
+        assertEquals(FaceOutcome.UNAVAILABLE, faceEnabled().requestAccessByFace(photo))
     }
 
     @Test
     fun `a facial access without connection is not a denial`() {
         pi.answer("/api/access/face", 500, "boom")
-        assertEquals(FaceOutcome.CONNECTION_ERROR, manager.requestAccessByFace(photo))
+        assertEquals(FaceOutcome.CONNECTION_ERROR, faceEnabled().requestAccessByFace(photo))
         assertEquals(AppState.IDLE, manager.state)
     }
 
     @Test
     fun `no photos means no request`() {
-        assertEquals(FaceOutcome.NO_FACE, manager.requestAccessByFace(emptyList()))
-        assertTrue(pi.calls.isEmpty())
+        assertEquals(FaceOutcome.NO_FACE, faceEnabled().requestAccessByFace(emptyList()))
+        assertTrue(pi.callsTo("/api/access/face").isEmpty())
     }
 
     @Test

@@ -58,6 +58,23 @@ class RaspberryClientTest {
     }
 
     @Test
+    fun `presence is read from the Raspberry Pi`() {
+        pi.answer("/api/presence", 200, """{"present": true}""")
+        assertTrue(client.getPresence())
+        pi.answer("/api/presence", 200, """{"present": false}""")
+        assertFalse(client.getPresence())
+        assertEquals("GET", pi.callsTo("/api/presence").first().method)
+    }
+
+    @Test
+    fun `presence fails as a connection problem, not as no presence`() {
+        pi.answer("/api/presence", 500, "boom")
+        assertThrows(ConnectionException::class.java) { client.getPresence() }
+        pi.answer("/api/presence", 200, "not json")
+        assertThrows(ConnectionException::class.java) { client.getPresence() }
+    }
+
+    @Test
     fun `an access request returns each result of the Raspberry Pi`() {
         val expected = mapOf(
             "autorizado" to ResultStatus.AUTHORIZED,
@@ -105,8 +122,8 @@ class RaspberryClientTest {
 
     @Test
     fun `a trailing slash in the address is accepted`() {
-        pi.answer("/api/login", 200, """{"identified": true, "name": "Ana"}""")
-        assertEquals("Ana", RaspberryClient(pi.baseUrl + "/").identify(user))
+        pi.answer("/api/presence", 200, """{"present": true}""")
+        assertTrue(RaspberryClient(pi.baseUrl + "/").getPresence())
     }
 
     @Test

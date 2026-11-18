@@ -14,7 +14,8 @@ classDiagram
         -askServerAddress()
     }
     class RequestActivity {
-        -showReady()
+        -watchPresence()
+        -onPresenceChanged(status: PresenceStatus)
         -onRequestClicked()
     }
     class ResultActivity {
@@ -38,6 +39,7 @@ classDiagram
         +currentUser: User?
         +lastResult: AccessResult?
         +identify(userId: String, pin: String) IdentifyOutcome
+        +checkPresence() PresenceStatus
         +canRequestAccess() Boolean
         +requestAccessByFace(photos: List~ByteArray~) FaceOutcome
         +requestAccess() AccessResult
@@ -49,6 +51,7 @@ classDiagram
         -connectTimeoutMs: Int
         -readTimeoutMs: Int
         +identify(user: User) String?
+        +getPresence() Boolean
         +sendRequest(request: AccessRequest) AccessResult
         +sendFaceRequest(photos: List~ByteArray~) FaceAnswer
     }
@@ -93,6 +96,7 @@ classDiagram
         <<enumeration>>
         IDLE
         IDENTIFIED
+        READY
         SENDING
         SHOWING_RESULT
     }
@@ -103,6 +107,13 @@ classDiagram
         INVALID_FORMAT
         NOT_RECOGNIZED
         CONNECTION_ERROR
+    }
+
+    class PresenceStatus {
+        <<enumeration>>
+        PRESENT
+        ABSENT
+        UNREACHABLE
     }
 
     class FaceOutcome {
@@ -130,6 +141,7 @@ classDiagram
     AccessManager "1" --> "0..1" AccessResult : lastResult
     AccessManager --> AppState
     AccessManager ..> IdentifyOutcome : returns
+    AccessManager ..> PresenceStatus : returns
     AccessManager ..> FaceOutcome : returns
 
     User ..> AccessRequest : creates

@@ -67,9 +67,10 @@ class ScreensTest {
         screen.findViewById<Button>(R.id.identifyButton).performClick()
     }
 
-    /** Goes through identification and the request, and returns the result screen. */
+    /** Goes through identification and presence, and returns the result screen. */
     private fun requestAccessAndOpenResult(accessAnswer: String): ResultActivity {
         pi.answer("/api/login", 200, """{"identified": true, "name": "Ana"}""")
+        pi.answer("/api/presence", 200, """{"present": true}""")
         pi.answer("/api/access", 200, accessAnswer)
 
         identify(openIdentification().get(), "12", "123")
@@ -111,7 +112,17 @@ class ScreensTest {
         val next = nextScreen()
         assertEquals(IdentificationActivity::class.java.name, next?.component?.className)
         assertNull(next?.getStringExtra(IdentificationActivity.EXTRA_MESSAGE))
-        assertTrue(pi.calls.isEmpty())
+        assertTrue(pi.callsTo("/api/access/face").isEmpty())
+    }
+
+    @Test
+    fun `the camera view asks for presence before the face`() {
+        pi.answer("/api/presence", 200, """{"present": true}""")
+        val screen = Robolectric.buildActivity(FaceActivity::class.java).setup().get()
+        await("a presence check from the camera view") { pi.callsTo("/api/presence").isNotEmpty() }
+        // Presence alone is not enough here: there is no camera on the PC.
+        assertFalse(screen.findViewById<Button>(R.id.faceButton).isEnabled)
+        assertTrue(pi.callsTo("/api/access/face").isEmpty())
     }
 
     @Test
@@ -153,8 +164,9 @@ class ScreensTest {
     }
 
     @Test
-    fun `the request button is enabled right after identifying, without the PIR`() {
+    fun `the request button is disabled until the PIR detects presence`() {
         pi.answer("/api/login", 200, """{"identified": true, "name": "Ana"}""")
+        pi.answer("/api/presence", 200, """{"present": false}""")
         identify(openIdentification().get(), "12", "123")
         await("the identification") { app.manager.state == AppState.IDENTIFIED }
 
@@ -163,10 +175,18 @@ class ScreensTest {
         val status = request.findViewById<TextView>(R.id.statusText)
         assertEquals("Hola, Ana", request.findViewById<TextView>(R.id.greetingText).text.toString())
 
-        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(3))
-        assertTrue(button.isEnabled)
-        assertEquals(request.getString(R.string.request_ready), status.text.toString())
-        assertTrue("the app must not ask for presence", pi.callsTo("/api/presence").isEmpty())
+        await("a presence check") { pi.callsTo("/api/presence").isNotEmpty() }
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse(button.isEnabled)
+        assertEquals(request.getString(R.string.request_waiting_presence), status.text.toString())
+
+        pi.answer("/api/presence", 200, """{"present": true}""")
+        await("the request to be enabled") { button.isEnabled }
+        assertEquals(request.getString(R.string.request_presence_detected), status.text.toString())
+
+        pi.answer("/api/presence", 500, "boom")
+        await("the request to be disabled again") { !button.isEnabled }
+        assertEquals(request.getString(R.string.request_unreachable), status.text.toString())
         assertTrue(pi.callsTo("/api/access").isEmpty())
     }
 
