@@ -92,7 +92,7 @@ The system implements a modular architecture under the src/ directory to guarant
 Integrativo 4 adds a mobile application as a new way to request access. It is meant for users only and works alongside the existing access methods (physical buttons, graphical interface and facial recognition), which keep working unchanged (NFR-10).
 
 *   *Identification:* the user identifies themselves in the app with their user code and password (FR-15).
-*   *Presence-enabled request:* the access request is enabled only while the Raspberry Pi reports that the PIR sensor detected presence. Presence enables the request; it never authorizes access by itself (FR-16).
+*   *Request after identifying:* the access request is enabled as soon as the user is identified. The app does not wait for the PIR sensor; the Raspberry Pi decides the result (FR-16).
 *   *Result in the app:* the app shows whether access was authorized, denied, or could not be completed due to a technical condition. A technical failure is never shown as a denial (FR-17, FR-18, NFR-11).
 *   *Return to the start:* when the operation ends, the app clears the entered data and returns to its initial state (FR-19).
 *   *Same validation logic:* requests from the app are authorized by the same validation used by the other access methods; there is no separate authorization path for the app (FR-20).
@@ -117,7 +117,7 @@ The Raspberry Pi serves three routes, on port 8000 by default (`API_PUERTO` in `
 | Method | Route | Purpose |
 | :--- | :--- | :--- |
 | `POST` | `/api/login` | Identify the user (FR-15) |
-| `GET` | `/api/presence` | Has the PIR sensor detected presence? (FR-16) |
+| `GET` | `/api/presence` | Has the PIR sensor detected presence? Still served, but the app no longer uses it (PIC-115) |
 | `POST` | `/api/access` | Request access and receive the result (FR-17, FR-18) |
 
 `/api/access` calls `validator.verificar_usuario()` and then `controller.procesar_resultado()`, the same functions the other access methods use. The API runs in its own thread next to the access cycle; if it cannot start, the system starts anyway and the other methods keep working.
@@ -158,7 +158,7 @@ RASPBERRY_URL=http://<pi-address>:8000 RASPBERRY_USER_ID=<id> RASPBERRY_PIN=<key
 python tools/simulated_api.py
 ```
 
-In the first view of the app, tap **Conexión** and type `10.0.2.2:8000` from the Android Studio emulator, or `<PC address>:8000` from a phone on the same Wi-Fi. While it runs, type `p` to toggle the presence of the PIR sensor, `e` to toggle a database failure and `q` to stop.
+In the first view of the app, tap **Conexión** and type `10.0.2.2:8000` from the Android Studio emulator, or `<PC address>:8000` from a phone on the same Wi-Fi. While it runs, type `e` to toggle a database failure and `q` to stop. `p` toggles the presence of the PIR sensor, which the app no longer needs.
 
 | Code | Key | Result |
 | :--- | :--- | :--- |
