@@ -30,6 +30,7 @@ from config import (
     TIEMPO_PANTALLA_PREPARANDO,
 )
 import api_server
+import bitacora
 import camera
 import enrollment
 import face
@@ -91,6 +92,11 @@ def procesar_resultado(usuario, resultado, metodo):
         usuario_id=usuario["id"] if usuario else None,
         metodo=metodo,
         resultado=resultado
+    )
+    bitacora.registrar(
+        bitacora.ACCESO, metodo,
+        usuario_id=usuario["id"] if usuario else None,
+        resultado=resultado,
     )
 
 @_salidas_en_exclusiva
@@ -160,22 +166,29 @@ def intento_facial(interfaz):
         # Un fallo técnico NO es un acceso denegado (NFR-04): se avisa
         # aparte y la persona sigue por código y clave.
         print("Fallo de cámara:", error)
+        bitacora.registrar(bitacora.FALLO_TECNICO, "facial",
+                           detalle=f"La cámara no responde: {error}")
         interfaz.mostrar_fallo_camara("La cámara no responde")
         time.sleep(TIEMPO_PANTALLA_FALLO_CAMARA)
         return None, None
 
     if motivo == face.NO_DISPONIBLE:
         print("DeepFace no está instalado: se usa identificación manual.")
+        bitacora.registrar(bitacora.FALLO_TECNICO, "facial",
+                           detalle="DeepFace no está instalado")
         return None, None
 
     if motivo == face.ERROR_BD:
         print("No se pudieron leer las plantillas biométricas.")
+        bitacora.registrar(bitacora.FALLO_TECNICO, "facial",
+                           detalle="No se pudieron leer las plantillas biométricas")
         interfaz.mostrar_fallo_camara("Sin conexión con la base de datos")
         time.sleep(TIEMPO_PANTALLA_FALLO_CAMARA)
         return None, None
 
     if motivo == face.SIN_ROSTRO:
         print("No se detectó ningún rostro.")
+        bitacora.registrar(bitacora.IDENTIFICACION, "facial", resultado="sin_rostro")
         interfaz.mostrar_fallo_camara("No se detectó ningún rostro")
         time.sleep(TIEMPO_PANTALLA_FALLO_CAMARA)
         return None, None
@@ -212,10 +225,13 @@ def gestion_usuarios(interfaz, usuario):
     se confía en que la interfaz lo haya escondido.
     """
     gestiona = puede_gestionar(usuario)
+    bitacora.registrar(bitacora.CONSULTA_USUARIOS, "gui", usuario_id=usuario["id"])
 
     while True:
         usuarios = db.obtener_usuarios()
         if usuarios == "ERROR_CONEXION":
+            bitacora.registrar(bitacora.FALLO_TECNICO, "gui", usuario_id=usuario["id"],
+                               detalle="No se pudo leer la lista de usuarios")
             interfaz.mostrar_fallo("Sin conexión con la base de datos")
             time.sleep(TIEMPO_PANTALLA_FALLO)
             return
@@ -225,6 +241,8 @@ def gestion_usuarios(interfaz, usuario):
         if isinstance(accion, tuple) and len(accion) == 2 and accion[0] == "enrolar":
             if not gestiona:
                 print("El rol no puede enrolar usuarios; se ignora.")
+                bitacora.registrar(bitacora.ACCION_RECHAZADA, "gui", usuario_id=usuario["id"],
+                                   detalle="Enrolar a un usuario sin poder gestionar")
                 continue
             # Solo se enrola a alguien de la lista que se acaba de leer;
             # un id que no esté ahí se descarta.
@@ -232,18 +250,20 @@ def gestion_usuarios(interfaz, usuario):
             if elegido is None:
                 print(f"El usuario {accion[1]} no está en la lista; se ignora.")
                 continue
-            resultado = enrollment.enrolar_existente(interfaz, elegido)
+            resultado = enrollment.enrolar_existente(interfaz, elegido, actor=usuario)
             procesar_resultado_enrolamiento(resultado)
             print(f"Enrolamiento del usuario {elegido['id']}:", resultado)
             continue
 
         if accion == "nuevo" and not gestiona:
             print("El rol no puede dar de alta usuarios; se ignora.")
+            bitacora.registrar(bitacora.ACCION_RECHAZADA, "gui", usuario_id=usuario["id"],
+                               detalle="Dar de alta a un usuario sin poder gestionar")
             continue
         if accion != "nuevo":        # "volver", None por inactividad o cierre
             return
 
-        resultado = enrollment.enrolar(interfaz)
+        resultado = enrollment.enrolar(interfaz, actor=usuario)
         procesar_resultado_enrolamiento(resultado)
         print("Enrolamiento:", resultado)
         # Con cualquier final se regresa a la lista: ahí el administrador
@@ -260,11 +280,15 @@ def sesion_administracion(interfaz, usuario):
           f"(rol {usuario.get('rol')}, "
           f"gestiona={puede_gestionar(usuario)}, "
           f"consulta={puede_consultar(usuario)})")
+    bitacora.registrar(bitacora.ADMIN_INICIO, "gui", usuario_id=usuario["id"],
+                       detalle=f"rol {usuario.get('rol')}")
 
     while True:
         opcion = interfaz.preguntar_menu_admin(usuario["nombre"])
         if opcion != "gestion":      # "salir", None por inactividad o cierre
             print("Saliendo del modo administración.")
+            bitacora.registrar(bitacora.ADMIN_FIN, "gui", usuario_id=usuario["id"],
+                               resultado="salir" if opcion == "salir" else "sin_respuesta")
             return
 
         gestion_usuarios(interfaz, usuario)
@@ -278,6 +302,7 @@ def ciclo_gui(interfaz):
     if not gpio_handler.esperar_presencia(timeout=TIEMPO_ESPERA_PRESENCIA):
         print("Sin presencia detectada, reiniciando espera...")
         return
+    bitacora.registrar(bitacora.PRESENCIA, bitacora.ORIGEN_SISTEMA)
 
     # ---------------------------- rostro ------------------------------
     if RECONOCIMIENTO_ACTIVO and _camara_disponible and face.disponible():
@@ -313,6 +338,7 @@ def ciclo_gui(interfaz):
 
     if datos is None:
         print("Identificación cancelada o sin actividad. Volviendo a reposo.")
+        bitacora.registrar(bitacora.IDENTIFICACION, "gui", resultado="cancelada")
         interfaz.mostrar_reposo()
         gpio_handler.esperar_fin_presencia()
         return
@@ -343,6 +369,7 @@ def ciclo_botones():
     if not gpio_handler.esperar_presencia(timeout=TIEMPO_ESPERA_PRESENCIA):
         print("Sin presencia detectada, reiniciando espera...")
         return
+    bitacora.registrar(bitacora.PRESENCIA, bitacora.ORIGEN_SISTEMA)
 
     print("GUI no disponible. Introduce la clave con los botones.")
     secuencia = gpio_handler.esperar_botones(LONGITUD_CLAVE)
@@ -369,8 +396,10 @@ def bucle_principal(interfaz, detener):
 def _hilo_de_trabajo(interfaz, detener):
     try:
         bucle_principal(interfaz, detener)
-    except Exception:
+    except Exception as error:
         traceback.print_exc()
+        bitacora.registrar(bitacora.FALLO_TECNICO, bitacora.ORIGEN_SISTEMA,
+                           detalle=f"El ciclo de acceso se detuvo: {error!r}")
     finally:
         interfaz.cerrar()  # si el ciclo termina, la ventana no debe quedar viva
 
@@ -379,6 +408,7 @@ def main():
     global _camara_disponible
 
     detener = threading.Event()
+    bitacora.iniciar()
     try:
         gpio_handler.inicializar()
         print("Sistema de acceso iniciado.")
@@ -403,11 +433,19 @@ def main():
         # La API de la app móvil es opcional, igual que la cámara: si no
         # puede levantar, la GUI, los botones y el rostro siguen activos.
         if API_ACTIVA:
-            api_server.iniciar(procesar_resultado)
+            api_activa = api_server.iniciar(procesar_resultado)
         else:
+            api_activa = False
             print("API de la app móvil desactivada por configuración.")
 
         interfaz = gui.crear_interfaz() if gui.gui_disponible() else None
+
+        bitacora.registrar(
+            bitacora.SISTEMA_INICIO, bitacora.ORIGEN_SISTEMA,
+            detalle=(f"cámara: {mensaje_camara}; "
+                     f"API: {'activa' if api_activa else 'inactiva'}; "
+                     f"modo: {'interfaz gráfica' if interfaz is not None else 'botones'}"),
+        )
 
         if interfaz is not None:
             hilo = threading.Thread(
@@ -429,6 +467,8 @@ def main():
         api_server.detener()     # antes de limpiar el GPIO: ya no entran solicitudes
         camera.liberar_camara()
         gpio_handler.limpiar()
+        bitacora.registrar(bitacora.SISTEMA_FIN, bitacora.ORIGEN_SISTEMA)
+        bitacora.detener()       # al final: guarda lo que quedó pendiente
 
 
 if __name__ == "__main__":

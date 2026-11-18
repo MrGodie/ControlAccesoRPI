@@ -25,6 +25,7 @@ hacía nada.
 
 import time
 
+import bitacora
 import camera
 import config
 import db
@@ -185,12 +186,29 @@ def _pedir_datos(interfaz, roles):
         return datos
 
 
-def enrolar(interfaz):
+def enrolar(interfaz, actor=None, origen="gui"):
     """
     Corre el enrolamiento completo de un usuario.
     Devuelve uno de: COMPLETADO, OTRO, CANCELADO, FALLO_CAMARA, FALLO_BD,
     CLAVE_DUPLICADA.
+
+    `actor` es quien hace el alta; el resultado, sea cual sea, queda en la
+    bitácora con él y con el usuario creado (FR-23).
     """
+    alta = {}
+    resultado = _enrolar(interfaz, alta)
+    bitacora.registrar(
+        bitacora.ALTA_USUARIO, origen,
+        usuario_id=actor["id"] if actor else None,
+        afectado_id=alta.get("usuario_id"),
+        resultado=resultado,
+        detalle=alta.get("detalle"),
+    )
+    return resultado
+
+
+def _enrolar(interfaz, alta):
+    """Cuerpo de enrolar(). Deja en `alta` el usuario creado, si lo hubo."""
     if not face.disponible():
         _fallo(interfaz, "El reconocimiento facial no está disponible",
                FALLO_CAMARA, reintentable=False)
@@ -238,6 +256,8 @@ def enrolar(interfaz):
     # Pantalla 07: enrolamiento completado. Muestra el código de usuario,
     # que la persona necesita para identificarse por código y clave.
     rol = next((r["nombre"] for r in roles if r["id"] == datos["rol_id"]), "")
+    alta["usuario_id"] = usuario_id
+    alta["detalle"] = f"{datos['nombre']}, rol {rol}, {len(muestras)} muestras"
     accion = interfaz.mostrar_enrolamiento_completo(
         datos["nombre"], rol, len(muestras), usuario_id
     )
@@ -245,7 +265,7 @@ def enrolar(interfaz):
     return OTRO if accion == "otro" else COMPLETADO
 
 
-def enrolar_existente(interfaz, usuario):
+def enrolar_existente(interfaz, usuario, actor=None, origen="gui"):
     """
     Registra el rostro de un usuario que ya existe (PIC-80). `usuario` es
     un renglón de db.obtener_usuarios(): {id, nombre, activo, rol, muestras}.
@@ -255,7 +275,24 @@ def enrolar_existente(interfaz, usuario):
     transacción: si algo falla, el usuario conserva su rostro anterior.
 
     Devuelve uno de: COMPLETADO, CANCELADO, FALLO_CAMARA, FALLO_BD.
+
+    `actor` es quien registra el rostro; el resultado queda en la
+    bitácora con él y con el usuario enrolado (FR-23).
     """
+    resultado = _enrolar_existente(interfaz, usuario)
+    reemplazo = " (reemplaza las anteriores)" if usuario.get("muestras") else ""
+    bitacora.registrar(
+        bitacora.ENROLAMIENTO, origen,
+        usuario_id=actor["id"] if actor else None,
+        afectado_id=usuario["id"],
+        resultado=resultado,
+        detalle=f"{usuario['nombre']}{reemplazo}",
+    )
+    return resultado
+
+
+def _enrolar_existente(interfaz, usuario):
+    """Cuerpo de enrolar_existente()."""
     if not face.disponible():
         _fallo(interfaz, "El reconocimiento facial no está disponible",
                FALLO_CAMARA, reintentable=False)

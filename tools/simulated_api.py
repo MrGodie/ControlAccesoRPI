@@ -7,6 +7,7 @@ Only what needs the device is replaced:
 
     gpio_handler  the PIR sensor is a switch toggled from this terminal
     validator     a fixed list of test users instead of the MySQL database
+    db            the event log (src/bitacora.py) is printed, not stored
     reaction      LEDs, speaker and servo are printed instead of moved
 
 The decision rules are the same as in src/validator.py: an unknown code or
@@ -98,6 +99,17 @@ def show_reaction(usuario, resultado, metodo):
     }.get(resultado, "unknown result")
     print(f"[simulated] {metodo} | {name} | {resultado} -> {reaction}")
 
+    # Same log entry as controller.procesar_resultado().
+    import bitacora
+    bitacora.registrar(bitacora.ACCESO, metodo,
+                       usuario_id=usuario["id"] if usuario else None,
+                       resultado=resultado)
+
+
+def store_event(evento):
+    """Stands in for db.registrar_evento(): the event is already printed."""
+    return True
+
 
 def _load_api_server():
     """Import src/api_server.py with the simulated modules in place."""
@@ -107,11 +119,17 @@ def _load_api_server():
     validator = types.ModuleType("validator")
     validator.verificar_usuario = verify_user
 
+    db = types.ModuleType("db")
+    db.registrar_evento = store_event
+
     sys.modules["gpio_handler"] = gpio_handler
     sys.modules["validator"] = validator
+    sys.modules["db"] = db
     sys.path.insert(0, os.path.abspath(SRC))
 
     import api_server
+    import bitacora
+    bitacora.iniciar()
     return api_server
 
 

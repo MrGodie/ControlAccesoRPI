@@ -307,3 +307,43 @@ DELETE FROM roles
 --     FROM usuarios u JOIN roles r ON u.rol_id = r.id ORDER BY u.id;
 --   -- ninguno debe quedar sin rol ni con un rol viejo
 -- -----------------------------------------------------
+
+-- -----------------------------------------------------
+-- 10. Bitácora completa de eventos (FR-23).
+-- Misma definición que en schema.sql. Es seguro correrla
+-- varias veces: solo crea la tabla si no existe.
+-- Igual que intentos_acceso, la cuenta de la aplicación
+-- solo puede leer e insertar: los eventos no se editan.
+-- -----------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS eventos (
+  id           INT          NOT NULL AUTO_INCREMENT,
+  evento_uid   CHAR(36)     NOT NULL,
+  fecha_hora   DATETIME     NOT NULL,
+  recibido     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  tipo         VARCHAR(40)  NOT NULL,
+  origen       VARCHAR(20)  NOT NULL,
+  usuario_id   INT          NULL,
+  afectado_id  INT          NULL,
+  resultado    VARCHAR(30)  NULL,
+  detalle      VARCHAR(255) NULL,
+  sin_conexion BOOLEAN      NOT NULL DEFAULT FALSE,
+  dispositivo  VARCHAR(64)  NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_eventos_uid (evento_uid),
+  KEY idx_eventos_fecha (fecha_hora),
+  KEY idx_eventos_usuario (usuario_id),
+  KEY idx_eventos_tipo (tipo),
+  CONSTRAINT fk_eventos_usuario
+    FOREIGN KEY (usuario_id) REFERENCES usuarios (id)
+    ON DELETE SET NULL,
+  CONSTRAINT fk_eventos_afectado
+    FOREIGN KEY (afectado_id) REFERENCES usuarios (id)
+    ON DELETE SET NULL
+) ENGINE = InnoDB;
+
+GRANT SELECT, INSERT
+  ON control_acceso.eventos
+  TO 'control_acceso_app'@'localhost';
+
+FLUSH PRIVILEGES;

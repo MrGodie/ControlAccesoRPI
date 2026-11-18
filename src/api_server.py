@@ -23,6 +23,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from config import API_HOST, API_PUERTO
+import bitacora
 import gpio_handler
 import validator
 
@@ -35,6 +36,14 @@ _PIN_MAX = 32
 
 _servidor = None
 _procesar_resultado = None
+
+# Dirección del teléfono que hizo la petición que atiende este hilo; va
+# en la bitácora como dispositivo.
+_peticion = threading.local()
+
+
+def _cliente():
+    return getattr(_peticion, "cliente", None)
 
 
 class _PeticionInvalida(Exception):
@@ -65,7 +74,8 @@ def identificar(datos):
     """
     POST /api/login. Confirma que el código y la clave corresponden a un
     usuario registrado. No abre nada ni registra un intento: eso ocurre
-    al solicitar el acceso.
+    al solicitar el acceso. Sí queda en la bitácora como identificación
+    (FR-23), con el código intentado y nunca la clave.
 
     La respuesta no dice cuál de los dos campos estuvo mal (FR-15), y
     una falla de la base de datos no se reporta como credencial
@@ -73,6 +83,21 @@ def identificar(datos):
     """
     usuario_id, pin = _leer_credenciales(datos)
     usuario, resultado = validator.verificar_usuario(usuario_id, pin)
+
+    if resultado == "error_sistema":
+        estado = "error_sistema"
+    elif usuario is None:
+        estado = "no_reconocido"
+    else:
+        estado = "identificado"
+    # Nunca la clave: solo el código que se intentó.
+    bitacora.registrar(
+        bitacora.IDENTIFICACION, METODO,
+        usuario_id=usuario["id"] if usuario else None,
+        resultado=estado,
+        detalle=f"código {usuario_id}",
+        dispositivo=_cliente(),
+    )
 
     if resultado == "error_sistema":
         return 503, {"result": resultado}
@@ -122,16 +147,21 @@ class _Manejador(BaseHTTPRequestHandler):
             self._responder(404, {"error": "Ruta no encontrada"})
 
     def _atender(self, operacion, con_cuerpo=False):
+        _peticion.cliente = self.address_string()
         try:
             if con_cuerpo:
                 estado, cuerpo = operacion(self._leer_json())
             else:
                 estado, cuerpo = operacion()
         except _PeticionInvalida as error:
+            bitacora.registrar(bitacora.PETICION_RECHAZADA, METODO,
+                               detalle=f"{self.path}: {error}", dispositivo=_cliente())
             estado, cuerpo = 400, {"error": str(error)}
         except Exception as error:
             # Una falla técnica nunca se reporta como acceso denegado.
             print("Error al atender la petición de la app:", repr(error))
+            bitacora.registrar(bitacora.FALLO_TECNICO, METODO,
+                               detalle=f"{self.path}: {error!r}", dispositivo=_cliente())
             estado, cuerpo = 500, {"result": "error_sistema"}
         self._responder(estado, cuerpo)
 
