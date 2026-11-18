@@ -20,6 +20,15 @@ enum class IdentifyOutcome {
     CONNECTION_ERROR,
 }
 
+/** What the Raspberry Pi says about the PIR sensor. */
+enum class PresenceStatus {
+    PRESENT,
+    ABSENT,
+
+    /** The Raspberry Pi did not answer. */
+    UNREACHABLE,
+}
+
 /**
  * The rules of one access operation: who is identified, whether the
  * request is enabled, and what the last result was. It knows nothing about
@@ -60,10 +69,28 @@ class AccessManager(private val client: RaspberryClient) {
     }
 
     /**
-     * True only while a user is identified and no request has been sent.
-     * The app does not wait for the PIR sensor (PIC-115).
+     * Asks once whether there is presence and enables or disables the
+     * request accordingly. The screen calls it every [PRESENCE_POLL_MS].
+     *
+     * Presence only enables the request; it never authorizes access.
      */
-    fun canRequestAccess(): Boolean = state == AppState.IDENTIFIED
+    @Synchronized
+    fun checkPresence(): PresenceStatus {
+        if (state != AppState.IDENTIFIED && state != AppState.READY) return PresenceStatus.ABSENT
+
+        val present = try {
+            client.getPresence()
+        } catch (_: ConnectionException) {
+            state = AppState.IDENTIFIED
+            return PresenceStatus.UNREACHABLE
+        }
+
+        state = if (present) AppState.READY else AppState.IDENTIFIED
+        return if (present) PresenceStatus.PRESENT else PresenceStatus.ABSENT
+    }
+
+    /** True only while a user is identified and presence has been detected. */
+    fun canRequestAccess(): Boolean = state == AppState.READY
 
     /**
      * Sends the access request and returns the result from the Raspberry Pi.
@@ -73,7 +100,7 @@ class AccessManager(private val client: RaspberryClient) {
     @Synchronized
     fun requestAccess(): AccessResult {
         val user = currentUser
-        check(user != null && state == AppState.IDENTIFIED) { "The access request is not enabled" }
+        check(user != null && state == AppState.READY) { "The access request is not enabled" }
 
         state = AppState.SENDING
         val result = client.sendRequest(user.newAccessRequest())
@@ -88,5 +115,9 @@ class AccessManager(private val client: RaspberryClient) {
         currentUser = null
         lastResult = null
         state = AppState.IDLE
+    }
+
+    companion object {
+        const val PRESENCE_POLL_MS = 1_000L
     }
 }

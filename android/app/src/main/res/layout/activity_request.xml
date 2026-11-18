@@ -36,6 +36,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="24dp"
+        android:enabled="false"
         android:minHeight="64dp"
         android:text="@string/request_button" />
 
@@ -44,7 +45,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
         android:gravity="center"
-        android:text="@string/request_note"
+        android:text="@string/request_presence_note"
         android:textAppearance="?attr/textAppearanceBodySmall" />
 
     <Button

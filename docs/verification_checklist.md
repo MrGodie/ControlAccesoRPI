@@ -19,7 +19,7 @@ The twelve steps the project brief asks for, in its order.
 | # | Step | Expected | Result | Evidence |
 | :--- | :--- | :--- | :--- | :--- |
 | A1 | The PIR sensor detects presence | The terminal prints `Presencia detectada` | | |
-| A2 | The request is enabled in the app | After identifying, the button "Solicitar acceso" is enabled; the app does not wait for presence (PIC-115) | | |
+| A2 | The request is enabled in the app | After identifying, the button "Solicitar acceso" becomes enabled; without presence it stays disabled | | |
 | A3 | The user identifies themselves | The app shows "Hola, *name*" | | |
 | A4 | The user requests access from the phone | The app shows "Enviando solicitud…" | | |
 | A5 | The app communicates with the Raspberry Pi | The terminal prints `API <phone address> - "POST /api/access HTTP/1.1" 200 -` | | |
@@ -72,5 +72,5 @@ With the API running. Each one must behave as it did before Integrativo 4.
 ## Notes for the run
 
 - The person with the phone also triggers the access cycle of the Raspberry Pi, because the PIR starts both. If that person has a registered face, the facial recognition can open the door before the app does. Decide beforehand who stands in front of the camera, or run A with `RECONOCIMIENTO_ACTIVO = False`.
-- The project brief describes presence first and identification second. Since PIC-115 the app does not depend on presence, so the PIR step (A1) only starts the cycle of the Raspberry Pi; the demonstration can still follow the order of the brief.
+- The project brief describes presence first and identification second. The app works in either order, but the demonstration should follow the order of the brief.
 - The code and key travel over plain HTTP on the local network. It is a known limitation, to be mentioned in the presentation.
