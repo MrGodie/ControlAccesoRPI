@@ -4,9 +4,10 @@
 API HTTP para la aplicación móvil. Corre en un hilo aparte, junto al
 ciclo de acceso, y solo orquesta: no decide nada.
 
-    POST /api/login     identifica al usuario                (FR-15)
-    GET  /api/presence  ¿el PIR detectó presencia?           (FR-16)
-    POST /api/access    solicita acceso y devuelve resultado (FR-17, FR-18)
+    POST /api/login        identifica al usuario                (FR-15)
+    GET  /api/presence     ¿el PIR detectó presencia?           (FR-16)
+    POST /api/access       solicita acceso y devuelve resultado (FR-17, FR-18)
+    POST /api/access/face  solicita acceso con fotos del rostro (FR-22)
 
 La decisión la toma validator, igual que para la GUI, los botones y el
 rostro (FR-20). La reacción física y el registro los hace la misma
@@ -18,21 +19,29 @@ Usa http.server de la biblioteca estándar: no agrega dependencias a la
 Raspberry Pi.
 """
 
+import base64
+import binascii
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from config import API_HOST, API_PUERTO
+from config import API_HOST, API_PUERTO, RECONOCIMIENTO_ACTIVO
 import bitacora
+import face
 import gpio_handler
 import validator
 
 # Método con el que quedan registrados los intentos hechos desde la app.
 METODO = "app"
+METODO_FACIAL = "app_facial"
 
 # Un cuerpo válido es un JSON de dos campos; lo demás se rechaza sin leerlo.
 _CUERPO_MAX = 1024
 _PIN_MAX = 32
+
+# Acceso facial: hasta tres fotos JPEG pequeñas codificadas en base64.
+_FOTOS_MAX = 3
+_CUERPO_MAX_ROSTRO = 1024 * 1024
 
 _servidor = None
 _procesar_resultado = None
@@ -129,6 +138,94 @@ def solicitar_acceso(datos):
     }
 
 
+def _leer_fotos(datos):
+    """Devuelve las fotos decodificadas (arreglos BGR) o lanza _PeticionInvalida."""
+    if not isinstance(datos, dict):
+        raise _PeticionInvalida("Se esperaba un objeto JSON")
+    fotos = datos.get("images")
+    if not isinstance(fotos, list) or not 1 <= len(fotos) <= _FOTOS_MAX:
+        raise _PeticionInvalida(f"El campo 'images' debe traer de 1 a {_FOTOS_MAX} fotos")
+
+    fotogramas = []
+    for foto in fotos:
+        if not isinstance(foto, str):
+            raise _PeticionInvalida("Cada foto debe ser una cadena base64")
+        try:
+            contenido = base64.b64decode(foto, validate=True)
+        except (binascii.Error, ValueError):
+            raise _PeticionInvalida("Una foto no es base64 válido")
+        fotograma = face.decodificar_imagen(contenido)
+        if fotograma is None:
+            raise _PeticionInvalida("Una foto no es una imagen JPEG o PNG")
+        fotogramas.append(fotograma)
+    return fotogramas
+
+
+def solicitar_acceso_facial(datos):
+    """
+    POST /api/access/face. La app manda fotos del rostro tomadas con la
+    cámara del teléfono; aquí se identifican contra las plantillas y se
+    decide con la misma lógica que el rostro frente a la Raspberry (FR-12,
+    FR-22). Las fotos solo existen en memoria mientras dura la petición
+    (NFR-14).
+
+    Respuestas:
+      200 {"result": "autorizado" | "denegado_sin_permiso" | "error_sistema", "name"}
+          el rostro se reconoció; hubo intento de acceso con su reacción
+          física y su registro, igual que /api/access
+      200 {"result": "rostro_no_reconocido"}  hay rostro pero no coincide
+      200 {"result": "sin_rostro"}            ninguna foto trae un rostro
+      503 {"result": "rostro_no_disponible"}  reconocimiento apagado o sin
+                                              DeepFace / OpenCV
+      503 {"result": "error_sistema"}         no se leyeron las plantillas
+
+    Sin reconocer a nadie no hay intento de acceso: la app ofrece entonces
+    el código y la clave, así que no se enciende el LED rojo; queda en la
+    bitácora como identificación (FR-23).
+    """
+    if not RECONOCIMIENTO_ACTIVO or not face.disponible_para_imagenes():
+        bitacora.registrar(bitacora.FALLO_TECNICO, METODO_FACIAL,
+                           detalle="Reconocimiento facial no disponible para la app",
+                           dispositivo=_cliente())
+        return 503, {"result": "rostro_no_disponible"}
+
+    fotogramas = _leer_fotos(datos)
+    usuario_id, distancia, motivo = face.identificar_imagenes(fotogramas)
+    del fotogramas
+
+    if motivo == face.ERROR_BD:
+        bitacora.registrar(bitacora.FALLO_TECNICO, METODO_FACIAL,
+                           detalle="No se pudieron leer las plantillas biométricas",
+                           dispositivo=_cliente())
+        return 503, {"result": "error_sistema"}
+
+    if motivo == face.NO_DISPONIBLE:
+        bitacora.registrar(bitacora.FALLO_TECNICO, METODO_FACIAL,
+                           detalle="Reconocimiento facial no disponible para la app",
+                           dispositivo=_cliente())
+        return 503, {"result": "rostro_no_disponible"}
+
+    if motivo == face.SIN_ROSTRO:
+        bitacora.registrar(bitacora.IDENTIFICACION, METODO_FACIAL,
+                           resultado="sin_rostro", dispositivo=_cliente())
+        return 200, {"result": "sin_rostro", "name": None}
+
+    if motivo == face.DESCONOCIDO:
+        cerca = f"distancia {distancia:.4f}" if distancia is not None else None
+        bitacora.registrar(bitacora.IDENTIFICACION, METODO_FACIAL,
+                           resultado="rostro_no_reconocido", detalle=cerca,
+                           dispositivo=_cliente())
+        return 200, {"result": "rostro_no_reconocido", "name": None}
+
+    usuario, resultado = validator.verificar_rostro(usuario_id)
+    _procesar_resultado(usuario, resultado, METODO_FACIAL)
+
+    return 200, {
+        "result": resultado,
+        "name": usuario["nombre"] if usuario else None,
+    }
+
+
 class _Manejador(BaseHTTPRequestHandler):
     server_version = "ControlAccesoRPI"
 
@@ -143,14 +240,17 @@ class _Manejador(BaseHTTPRequestHandler):
             self._atender(identificar, con_cuerpo=True)
         elif self.path == "/api/access":
             self._atender(solicitar_acceso, con_cuerpo=True)
+        elif self.path == "/api/access/face":
+            self._atender(solicitar_acceso_facial, con_cuerpo=True,
+                          cuerpo_max=_CUERPO_MAX_ROSTRO)
         else:
             self._responder(404, {"error": "Ruta no encontrada"})
 
-    def _atender(self, operacion, con_cuerpo=False):
+    def _atender(self, operacion, con_cuerpo=False, cuerpo_max=_CUERPO_MAX):
         _peticion.cliente = self.address_string()
         try:
             if con_cuerpo:
-                estado, cuerpo = operacion(self._leer_json())
+                estado, cuerpo = operacion(self._leer_json(cuerpo_max))
             else:
                 estado, cuerpo = operacion()
         except _PeticionInvalida as error:
@@ -165,12 +265,12 @@ class _Manejador(BaseHTTPRequestHandler):
             estado, cuerpo = 500, {"result": "error_sistema"}
         self._responder(estado, cuerpo)
 
-    def _leer_json(self):
+    def _leer_json(self, cuerpo_max=_CUERPO_MAX):
         try:
             longitud = int(self.headers.get("Content-Length", 0))
         except ValueError:
             raise _PeticionInvalida("Content-Length inválido")
-        if longitud <= 0 or longitud > _CUERPO_MAX:
+        if longitud <= 0 or longitud > cuerpo_max:
             raise _PeticionInvalida("Cuerpo vacío o demasiado grande")
         try:
             return json.loads(self.rfile.read(longitud).decode("utf-8"))

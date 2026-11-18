@@ -31,6 +31,8 @@ Then, in the first view of the app, tap "Conexión" and type:
 Commands while it runs (type the letter and press Enter):
     p   toggle the presence of the PIR sensor
     e   toggle a simulated database failure
+    f   change what the face recognition answers to the app's photos:
+        user 1, user 2, unknown face, no face, or not available
     q   stop
 
 For the PC only: it never touches GPIO, the database or the access log.
@@ -50,8 +52,18 @@ USERS = {
     2: ("456", "Usuario Sin Permiso", False),
 }
 
-_state = {"present": False, "db_failure": False}
+_state = {"present": False, "db_failure": False, "face": 0}
 _lock = threading.Lock()
+
+# What the simulated face recognition answers to the photos from the app,
+# in the order the "f" command goes through them.
+FACE_MODES = ["user 1", "user 2", "unknown face", "no face", "not available"]
+
+# Same reasons as src/face.py.
+SIN_ROSTRO = "sin_rostro"
+DESCONOCIDO = "desconocido"
+NO_DISPONIBLE = "no_disponible"
+ERROR_BD = "error_bd"
 
 
 def _get(key):
@@ -88,6 +100,52 @@ def verify_user(usuario_id, secuencia=None):
     return user, ("autorizado" if allowed else "denegado_sin_permiso")
 
 
+def verify_face(usuario_id):
+    """Stands in for validator.verificar_rostro(): no key, the face identified the user."""
+    return verify_user(usuario_id)
+
+
+def _face_mode():
+    with _lock:
+        return FACE_MODES[_state["face"]]
+
+
+def _next_face_mode():
+    with _lock:
+        _state["face"] = (_state["face"] + 1) % len(FACE_MODES)
+
+
+def face_available():
+    """Stands in for face.disponible_para_imagenes()."""
+    return _face_mode() != "not available"
+
+
+def decode_photo(data):
+    """
+    Stands in for face.decodificar_imagen(): accepts anything that starts
+    like a JPEG or a PNG. The photo is not looked at, and never stored.
+    """
+    if data[:3] == b"\xff\xd8\xff" or data[:8] == b"\x89PNG\r\n\x1a\n":
+        return object()
+    return None
+
+
+def identify_photos(fotogramas):
+    """Stands in for face.identificar_imagenes(), answering as the "f" command says."""
+    if _get("db_failure"):
+        return None, None, ERROR_BD
+    mode = _face_mode()
+    if mode == "user 1":
+        return 1, 0.1, None
+    if mode == "user 2":
+        return 2, 0.1, None
+    if mode == "unknown face":
+        return None, 0.9, DESCONOCIDO
+    if mode == "no face":
+        return None, None, SIN_ROSTRO
+    return None, None, NO_DISPONIBLE
+
+
 def show_reaction(usuario, resultado, metodo):
     """Stands in for controller.procesar_resultado()."""
     name = usuario["nombre"] if usuario else "-"
@@ -118,12 +176,21 @@ def _load_api_server():
 
     validator = types.ModuleType("validator")
     validator.verificar_usuario = verify_user
+    validator.verificar_rostro = verify_face
+
+    face = types.ModuleType("face")
+    face.SIN_ROSTRO, face.DESCONOCIDO = SIN_ROSTRO, DESCONOCIDO
+    face.NO_DISPONIBLE, face.ERROR_BD = NO_DISPONIBLE, ERROR_BD
+    face.disponible_para_imagenes = face_available
+    face.decodificar_imagen = decode_photo
+    face.identificar_imagenes = identify_photos
 
     db = types.ModuleType("db")
     db.registrar_evento = store_event
 
     sys.modules["gpio_handler"] = gpio_handler
     sys.modules["validator"] = validator
+    sys.modules["face"] = face
     sys.modules["db"] = db
     sys.path.insert(0, os.path.abspath(SRC))
 
@@ -136,7 +203,7 @@ def _load_api_server():
 def _status():
     presence = "ON" if _get("present") else "off"
     database = "FAILING" if _get("db_failure") else "ok"
-    return f"presence {presence} | database {database}"
+    return f"presence {presence} | database {database} | face from app: {_face_mode()}"
 
 
 def main():
@@ -152,7 +219,8 @@ def main():
         sys.exit(1)
 
     print("Test users: code 1 / key 123 (access), code 2 / key 456 (no access)")
-    print("Commands: p = toggle presence, e = toggle database failure, q = quit")
+    print("Commands: p = toggle presence, e = toggle database failure, "
+          "f = change the face answer, q = quit")
     print(_status())
 
     try:
@@ -162,10 +230,12 @@ def main():
                 _toggle("present")
             elif command == "e":
                 _toggle("db_failure")
+            elif command == "f":
+                _next_face_mode()
             elif command == "q":
                 break
             elif command:
-                print("Unknown command. p = presence, e = database failure, q = quit")
+                print("Unknown command. p = presence, e = database failure, f = face, q = quit")
                 continue
             print(_status())
     except KeyboardInterrupt:
