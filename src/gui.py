@@ -114,11 +114,21 @@ class InterfazAcceso:
         dibujan los botones de alta ni de enrolar. Esconderlos es
         cortesía, no seguridad; quien decide es el controlador.
 
-        Devuelve "nuevo", ("enrolar", usuario_id) o "volver".
+        Devuelve "nuevo", ("enrolar", usuario_id), ("rol", usuario_id)
+        o "volver".
         """
         resultado = self._preguntar(self._ui_lista_usuarios, usuarios,
                                     puede_gestionar)
         return resultado or "volver"
+
+    def pedir_rol(self, usuario, roles, error=None):
+        """
+        Cambio de rol de un usuario (PIC-114). `usuario` es un renglón de
+        db.obtener_usuarios() y `roles` lo que devuelve db.obtener_roles().
+        Devuelve el rol_id elegido, o None si se cancela. `error` es el
+        mensaje a mostrar en rojo de un intento anterior.
+        """
+        return self._preguntar(self._ui_cambiar_rol, usuario, roles, error)
 
     def mostrar_fallo(self, detalle):
         """Pantalla de fallo técnico genérica (no es un acceso denegado)."""
@@ -567,13 +577,14 @@ class InterfazAcceso:
             f"{enrolados} con rostro registrado",
         )
 
-        # Quien puede gestionar tiene una columna más, con el botón para
-        # registrar el rostro de ese usuario (PIC-80).
+        # Quien puede gestionar tiene una columna más, con los botones para
+        # registrar el rostro de ese usuario (PIC-80) y cambiarle el rol
+        # (PIC-114). El nombre cede espacio para que quepan los dos.
         titulos = ["NOMBRE", "ROL", "ROSTRO", "ESTADO"]
         pesos = [5, 3, 2, 2]
         if puede_gestionar:
             titulos.append("")
-            pesos.append(2)
+            pesos = [4, 3, 2, 2, 3]
 
         tabla = tk.Frame(bloque, bg=FONDO)
         tabla.pack(fill="x", pady=(4, 0))
@@ -603,16 +614,25 @@ class InterfazAcceso:
                     anchor="w", padx=12, pady=8,
                 ).grid(row=fila, column=columna, sticky="ew", pady=(0, 4))
             if puede_gestionar:
-                # Más bajo que el renglón, para que la tabla no crezca.
+                # Más bajos que el renglón, para que la tabla no crezca.
+                acciones = tk.Frame(tabla, bg=FONDO)
+                acciones.grid(row=fila, column=len(titulos) - 1, sticky="ew",
+                              padx=(8, 0), pady=(0, 4))
                 tk.Button(
-                    tabla,
+                    acciones,
                     text="Re-enrolar" if usuario["muestras"] else "Enrolar",
                     font=FUENTE_ETIQUETA, bg=FONDO, fg=TEXTO,
                     activebackground=CAJA, activeforeground=TEXTO,
                     padx=8, pady=2,
                     command=lambda uid=usuario["id"]: self._responder(("enrolar", uid)),
-                ).grid(row=fila, column=len(titulos) - 1, sticky="ew",
-                       padx=(8, 0), pady=(0, 4))
+                ).pack(side="left", fill="x", expand=True)
+                tk.Button(
+                    acciones, text="Rol",
+                    font=FUENTE_ETIQUETA, bg=FONDO, fg=TEXTO,
+                    activebackground=CAJA, activeforeground=TEXTO,
+                    padx=8, pady=2,
+                    command=lambda uid=usuario["id"]: self._responder(("rol", uid)),
+                ).pack(side="left", padx=(6, 0))
 
         if len(usuarios) > MAX_FILAS_USUARIOS:
             tk.Label(
@@ -711,6 +731,49 @@ class InterfazAcceso:
 
         rol = self._roles[self._form_rol.current()]
         self._responder({"nombre": nombre, "rol_id": rol["id"], "clave": clave})
+
+    # -- Cambio de rol (PIC-114) ----------------------------------------------
+
+    def _ui_cambiar_rol(self, usuario, roles, error=None):
+        bloque = self._nueva_pantalla("CAMBIO DE ROL")
+        self._titulo(bloque, "Cambiar rol", usuario["nombre"])
+        self._caja(bloque, f"Rol actual: {usuario['rol']}")
+
+        self._campo_etiqueta(bloque, "ROL NUEVO")
+        self._roles = roles
+        self._form_rol = ttk.Combobox(
+            bloque, state="readonly",
+            values=[r["nombre"] for r in roles],
+        )
+        indice = next((i for i, r in enumerate(roles)
+                       if r["id"] == usuario.get("rol_id")), 0)
+        self._form_rol.current(indice)
+        self._form_rol.pack(fill="x", ipady=4, pady=(2, 12))
+
+        self._mensaje = tk.Label(bloque, text=error or "", font=FUENTE_ETIQUETA,
+                                 bg=FONDO, fg="#b00020")
+        self._mensaje.pack(anchor="w")
+
+        barra = tk.Frame(bloque, bg=FONDO)
+        barra.pack(anchor="w", pady=(14, 0))
+        tk.Button(
+            barra, text="Guardar", font=FUENTE_BOTON, bg=TEXTO, fg="#ffffff",
+            activebackground="#333333", activeforeground="#ffffff",
+            padx=22, pady=8, command=self._enviar_rol,
+        ).pack(side="left")
+        tk.Button(
+            barra, text="Cancelar", font=FUENTE_BOTON, bg=FONDO, fg=TEXTO,
+            padx=22, pady=8, command=self._cancelar,
+        ).pack(side="left", padx=(12, 0))
+
+        self._reiniciar_inactividad()
+        self.raiz.bind("<Key>", self._reiniciar_inactividad)
+        self.raiz.bind("<ButtonPress>", self._reiniciar_inactividad)
+
+    def _enviar_rol(self):
+        if self._form_rol is None:
+            return
+        self._responder(self._roles[self._form_rol.current()]["id"])
 
     # -- 02 Preparación -----------------------------------------------------
 
