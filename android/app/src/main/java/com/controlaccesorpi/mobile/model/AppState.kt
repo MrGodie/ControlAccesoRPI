@@ -5,8 +5,11 @@ enum class AppState {
     /** Nobody identified; the form is empty. */
     IDLE,
 
-    /** User identified: the access request is enabled. */
+    /** User identified, waiting for the PIR sensor to detect presence. */
     IDENTIFIED,
+
+    /** Presence detected: the access request is enabled. */
+    READY,
 
     /** Request sent, waiting for the Raspberry Pi. */
     SENDING,

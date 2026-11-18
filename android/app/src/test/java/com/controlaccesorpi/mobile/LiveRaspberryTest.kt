@@ -2,6 +2,7 @@ package com.controlaccesorpi.mobile
 
 import com.controlaccesorpi.mobile.logic.AccessManager
 import com.controlaccesorpi.mobile.logic.IdentifyOutcome
+import com.controlaccesorpi.mobile.logic.PresenceStatus
 import com.controlaccesorpi.mobile.model.ResultStatus
 import com.controlaccesorpi.mobile.network.RaspberryClient
 import org.junit.Assert.assertEquals
@@ -31,6 +32,12 @@ class LiveRaspberryTest {
     }
 
     @Test
+    fun `the Raspberry Pi answers the presence check`() {
+        assumeTrue("RASPBERRY_URL is not set", !url.isNullOrBlank())
+        RaspberryClient(url).getPresence()
+    }
+
+    @Test
     fun `a wrong key is not recognized`() {
         assertEquals(IdentifyOutcome.NOT_RECOGNIZED, manager().identify("99999999", "00000000"))
     }
@@ -49,6 +56,7 @@ class LiveRaspberryTest {
         assumeTrue("RASPBERRY_USER_ID and RASPBERRY_PIN are not set", !userId.isNullOrBlank() && !pin.isNullOrBlank())
 
         assertEquals(IdentifyOutcome.IDENTIFIED, manager.identify(userId, pin))
+        assumeTrue("The PIR sensor reports no presence", manager.checkPresence() == PresenceStatus.PRESENT)
 
         val result = manager.requestAccess()
         assertNotEquals(ResultStatus.CONNECTION_ERROR, result.status)
