@@ -53,7 +53,7 @@ FROM intentos_acceso ORDER BY id DESC LIMIT 5;
 | # | Step | Expected | Result | Evidence |
 | :--- | :--- | :--- | :--- | :--- |
 | C1 | Stop the database (`sudo systemctl stop mariadb`) and request access | Amber view "No se pudo completar"; red LED blinks; the motor does not move | | |
-| C2 | Turn off the Wi-Fi of the phone on the request view | The app shows "Sin conexión con el punto de acceso" and the button is disabled | | |
+| C2 | Turn off the Wi-Fi of the phone on the request view and tap "Solicitar acceso" | Amber view "No se pudo completar": "No hubo respuesta del punto de acceso. Tu acceso no fue rechazado…" | | |
 | C3 | Start the database again and repeat A | Works as before | | |
 
 ## D. The previous access methods still work
