@@ -68,6 +68,8 @@ With the API running. Each one must behave as it did before Integrativo 4.
 | D4 | Physical buttons (system started without a screen), authorized | Green LED, sound, motor, row with `metodo = 'botones'` | | |
 | D5 | The system starts with the API turned off (`API_ACTIVA = False`) | It starts and D1 works | | |
 | D6 | An access from the app while the graphical interface is showing a result | The two reactions happen one after the other, never at the same time | | |
+| D7 | An administrator changes the role of another user on the screen (**Rol**) | The list shows the new role; a row `cambio_rol` in `eventos` | | |
+| D8 | The only active administrator tries to remove their own role | Rejected with "Es el último usuario activo que puede gestionar…" | | |
 
 ## E. Facial access from the app (FR-22)
 

@@ -22,7 +22,7 @@ sequenceDiagram
     V->>DB: obtener_usuario_por_id(id, pin)
     DB-->>V: user or None
     V-->>API: (user, result)
-    Note over API: Identification only: no LED, no motor, no log entry
+    Note over API: Identification only: no LED, no motor, no access attempt,<br/>logged in the event log as an identification
     API-->>C: 200 {identified, name} or 503 on a technical failure
     C-->>M: name, null, or ConnectionException
     M-->>UI: IDENTIFIED: go to request view (button enabled)
@@ -55,5 +55,50 @@ sequenceDiagram
 
     M-->>UI: Show result view
     UI-->>U: Authorized / Denied / Operation could not be completed
-    Note over UI,M: After 8 s: reset(), back to identification (initial state)
+    Note over UI,M: After 8 s: reset(), back to the view where it started
+```
+
+Facial access from the app (FR-22). The app opens on this view; the code and key above are the fallback.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as User
+    box Mobile app (Kotlin)
+        participant F as FaceActivity
+        participant M as AccessManager
+        participant C as RaspberryClient
+    end
+    box Raspberry Pi (Python)
+        participant API as api_server.py
+        participant FC as face.py
+        participant V as validator.py
+        participant HW as controller.py + GPIO
+    end
+
+    U->>F: Tap "Entrar con rostro"
+    F->>F: Take 3 photos, upright, 640 px JPEG
+    F->>M: requestAccessByFace(photos)
+    M->>C: sendFaceRequest(photos)
+    C->>API: POST /api/access/face {images: [base64]}
+    API->>FC: decodificar_imagen() in memory, identificar_imagenes()
+    alt Face recognized
+        FC-->>API: user_id
+        API->>V: verificar_rostro(user_id)
+        V-->>API: (user, result)
+        API->>HW: procesar_resultado(user, result, "app_facial")
+        API-->>C: 200 {result, name}
+        M-->>F: RESULT
+        F-->>U: Result view: authorized, or denied without permission
+    else Unknown face / no face
+        Note over API: No LED, no motor, logged as an identification
+        API-->>C: 200 {result: rostro_no_reconocido | sin_rostro}
+        M-->>F: NOT_RECOGNIZED / NO_FACE
+        F-->>U: Code and key form, with the reason
+    else Recognition off, templates unreadable, no connection
+        API-->>C: 503 {result: rostro_no_disponible | error_sistema}
+        M-->>F: UNAVAILABLE / SYSTEM_ERROR / CONNECTION_ERROR
+        F-->>U: Code and key form, with the technical reason (never a denial)
+    end
+    Note over F,API: The photos are never written to disk (NFR-14)
 ```
