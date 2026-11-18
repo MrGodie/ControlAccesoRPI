@@ -20,11 +20,16 @@ import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.controlaccesorpi.mobile.AccessApp
 import com.controlaccesorpi.mobile.R
+import com.controlaccesorpi.mobile.logic.AccessManager
 import com.controlaccesorpi.mobile.logic.FaceOutcome
+import com.controlaccesorpi.mobile.logic.PresenceStatus
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -33,7 +38,9 @@ import kotlin.coroutines.resume
 
 /**
  * The app opens here: the user looks at the front camera and enters with
- * their face (FR-22). The photos go to the Raspberry Pi, which identifies
+ * their face (FR-22). Like the request with code and key, it is enabled
+ * only once the PIR has detected presence (FR-16). The photos go to the
+ * Raspberry Pi, which identifies
  * the face and decides. If the face does not work, the app goes to the
  * code and key form and says why; a recognized user without access gets
  * the denial instead, because their key would give the same answer.
@@ -50,6 +57,8 @@ class FaceActivity : AppCompatActivity() {
 
     private var imageCapture: ImageCapture? = null
     private var busy = false
+    private var present = false
+    private var presenceJob: Job? = null
 
     private val askCameraPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -83,6 +92,39 @@ class FaceActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         setBusy(false)
+        if (presenceJob?.isActive != true) watchPresence()
+    }
+
+    /**
+     * Asks the Raspberry Pi about presence while this view is on screen.
+     * "Entrar con rostro" is enabled only while the PIR reports presence,
+     * like the request with code and key (FR-16, FR-22).
+     */
+    private fun watchPresence() {
+        presenceJob = lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (true) {
+                    val status = withContext(Dispatchers.IO) { app.manager.checkPresenceForFace() }
+                    if (busy) return@repeatOnLifecycle
+                    onPresenceChanged(status)
+                    delay(AccessManager.PRESENCE_POLL_MS)
+                }
+            }
+        }
+    }
+
+    private fun onPresenceChanged(status: PresenceStatus) {
+        present = status == PresenceStatus.PRESENT
+        faceButton.isEnabled = !busy && present && imageCapture != null
+        // Without a camera the message about the camera stays on screen.
+        if (imageCapture == null) return
+        statusText.setText(
+            when (status) {
+                PresenceStatus.PRESENT -> R.string.face_presence_detected
+                PresenceStatus.ABSENT -> R.string.request_waiting_presence
+                PresenceStatus.UNREACHABLE -> R.string.request_unreachable
+            }
+        )
     }
 
     private fun startCamera() {
@@ -123,7 +165,8 @@ class FaceActivity : AppCompatActivity() {
                 provider.unbindAll()
                 provider.bindToLifecycle(this, selector, shown, capture)
                 imageCapture = capture
-                faceButton.isEnabled = !busy
+                faceButton.isEnabled = !busy && present
+                statusText.setText(if (present) R.string.face_presence_detected else R.string.request_waiting_presence)
             } catch (_: Exception) {
                 cameraUnavailable(R.string.face_no_camera)
             }
@@ -138,8 +181,9 @@ class FaceActivity : AppCompatActivity() {
 
     private fun onFaceClicked() {
         val capture = imageCapture ?: return
-        if (busy) return
+        if (busy || !present) return
         setBusy(true)
+        presenceJob?.cancel()
         statusText.setText(R.string.face_capturing)
 
         lifecycleScope.launch {
@@ -158,10 +202,23 @@ class FaceActivity : AppCompatActivity() {
             }
 
             statusText.setText(R.string.face_sending)
-            val outcome = withContext(Dispatchers.IO) { app.manager.requestAccessByFace(photos) }
+            val outcome = withContext(Dispatchers.IO) {
+                try {
+                    app.manager.requestAccessByFace(photos)
+                } catch (_: IllegalStateException) {
+                    // Presence went away between the last check and the tap.
+                    null
+                }
+            }
             photos.clear()
 
             when (outcome) {
+                null -> {
+                    present = false
+                    setBusy(false)
+                    statusText.setText(R.string.request_waiting_presence)
+                    watchPresence()
+                }
                 FaceOutcome.RESULT -> startActivity(Intent(this@FaceActivity, ResultActivity::class.java))
                 FaceOutcome.NOT_RECOGNIZED -> openForm(getString(R.string.face_not_recognized))
                 FaceOutcome.NO_FACE -> openForm(getString(R.string.face_no_face))
@@ -207,10 +264,9 @@ class FaceActivity : AppCompatActivity() {
 
     private fun setBusy(value: Boolean) {
         busy = value
-        faceButton.isEnabled = !value && imageCapture != null
+        faceButton.isEnabled = !value && present && imageCapture != null
         codeButton.isEnabled = !value
         progress.visibility = if (value) View.VISIBLE else View.INVISIBLE
-        if (!value && imageCapture != null) statusText.text = ""
     }
 
     companion object {

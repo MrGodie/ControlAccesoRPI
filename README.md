@@ -100,15 +100,15 @@ The system implements a modular architecture under the src/ directory to guarant
 
 Integrativo 4 adds a mobile application as a new way to request access. It is meant for users only and works alongside the existing access methods (physical buttons, graphical interface and facial recognition), which keep working unchanged (NFR-10).
 
-*   *Facial access first:* the app opens on the front camera. The photos go to the Raspberry Pi, which identifies the face and decides (FR-22). If the face is not recognized, no face is seen or facial recognition is not available, the app goes to the code and key form and says why; a recognized user without access gets the denial.
+*   *Facial access first:* the app opens on the front camera. "Entrar con rostro" is enabled only while the PIR reports presence, like the request with code and key (FR-16). The photos go to the Raspberry Pi, which identifies the face and decides (FR-22). If the face is not recognized, no face is seen or facial recognition is not available, the app goes to the code and key form and says why; a recognized user without access gets the denial.
 *   *Identification:* the user identifies themselves in the app with their user code and password (FR-15).
-*   *Request after identifying:* the access request is enabled as soon as the user is identified. The app does not wait for the PIR sensor; the Raspberry Pi decides the result (FR-16).
+*   *Presence-enabled request:* the access request is enabled only while the Raspberry Pi reports that the PIR sensor detected presence. Presence enables the request; it never authorizes access by itself (FR-16).
 *   *Result in the app:* the app shows whether access was authorized, denied, or could not be completed due to a technical condition. A technical failure is never shown as a denial (FR-17, FR-18, NFR-11).
 *   *Return to the start:* when the operation ends, the app clears the entered data and returns to its initial state (FR-19).
 *   *Same validation logic:* requests from the app are authorized by the same validation used by the other access methods; there is no separate authorization path for the app (FR-20).
 *   *Administration not in the app yet:* NFR-09 now allows it for the roles that can manage or consult (FR-21), within a session (NFR-12), but it is not implemented: users, roles and faces are managed on the screen of the Raspberry Pi. The app never changes the system configuration.
 
-The requirements are listed in `requirements.md` (FR-15 to FR-26, NFR-09 to NFR-14) and the screens in `docs/Interface_5.png` and `docs/Interface_6.png`. Those wireframes predate the facial access from the app (FR-22) and the request without presence (FR-16).
+The requirements are listed in `requirements.md` (FR-15 to FR-26, NFR-09 to NFR-14) and the screens in `docs/Interface_5.png`, `docs/Interface_6.png` and `docs/Interface_7.png`. The camera view of the facial access, where the app opens, is in `docs/Interface_7.png` (FR-22).
 
 **Status:** implemented in Kotlin (`android/`), with the API on the Raspberry Pi in `src/api_server.py`. Tested on a PC; the run on the real Raspberry Pi and on a phone is tracked in `docs/verification_checklist.md` (PIC-107).
 
@@ -127,7 +127,7 @@ The Raspberry Pi serves four routes, on port 8000 by default (`API_PUERTO` in `s
 | Method | Route | Purpose |
 | :--- | :--- | :--- |
 | `POST` | `/api/login` | Identify the user (FR-15) |
-| `GET` | `/api/presence` | Has the PIR sensor detected presence? Still served, but the app no longer uses it (PIC-115) |
+| `GET` | `/api/presence` | Has the PIR sensor detected presence? (FR-16) |
 | `POST` | `/api/access` | Request access and receive the result (FR-17, FR-18) |
 | `POST` | `/api/access/face` | Request access with up to three photos of the face (FR-22) |
 
@@ -169,7 +169,7 @@ RASPBERRY_URL=http://<pi-address>:8000 RASPBERRY_USER_ID=<id> RASPBERRY_PIN=<key
 python tools/simulated_api.py
 ```
 
-In the first view of the app, tap **Conexión** and type `10.0.2.2:8000` from the Android Studio emulator, or `<PC address>:8000` from a phone on the same Wi-Fi. While it runs, type `e` to toggle a database failure, `f` to change what the facial access answers (user 1, user 2, unknown face, no face, not available) and `q` to stop. `p` toggles the presence of the PIR sensor, which the app no longer needs.
+In the first view of the app, tap **Conexión** and type `10.0.2.2:8000` from the Android Studio emulator, or `<PC address>:8000` from a phone on the same Wi-Fi. While it runs, type `p` to toggle the presence of the PIR sensor (the app waits for it, FR-16), `e` to toggle a database failure, `f` to change what the facial access answers (user 1, user 2, unknown face, no face, not available) and `q` to stop. Start it with `--present` to have presence from the start.
 
 | Code | Key | Result |
 | :--- | :--- | :--- |
@@ -198,6 +198,7 @@ ControlAccesoRPI/
 │   ├── Interface_4.png
 │   ├── Interface_5.png
 │   ├── Interface_6.png
+│   ├── Interface_7.png
 │   ├── bpmn-process.md
 │   ├── class_diagram.md
 │   ├── data.md

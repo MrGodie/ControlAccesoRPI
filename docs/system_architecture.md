@@ -7,7 +7,7 @@ flowchart LR
     end
 
     subgraph RPI["Raspberry Pi (src/)"]
-        API["api_server.py<br/>/login /access /access/face"]
+        API["api_server.py<br/>/login /presence /access /access/face"]
         GUI["gui.py<br/>monitor"]
         GPIO["gpio_handler.py<br/>PIR, buttons, LEDs"]
         FACE["camera.py, face.py, enrollment.py<br/>camera"]

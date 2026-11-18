@@ -21,6 +21,15 @@ enum class IdentifyOutcome {
     CONNECTION_ERROR,
 }
 
+/** What the Raspberry Pi says about the PIR sensor. */
+enum class PresenceStatus {
+    PRESENT,
+    ABSENT,
+
+    /** The Raspberry Pi did not answer. */
+    UNREACHABLE,
+}
+
 /** What happened with the facial access (FR-22). */
 enum class FaceOutcome {
     /** The face was recognized and the Raspberry Pi decided: see [AccessManager.lastResult]. */
@@ -64,6 +73,10 @@ class AccessManager(private val client: RaspberryClient) {
     var lastResult: AccessResult? = null
         private set
 
+    /** Last presence answer seen by the camera view (FR-22). */
+    @Volatile
+    private var presentForFace = false
+
     /** Identifies the user with the text typed in the form. */
     @Synchronized
     fun identify(userId: String, pin: String): IdentifyOutcome {
@@ -82,10 +95,28 @@ class AccessManager(private val client: RaspberryClient) {
     }
 
     /**
-     * True only while a user is identified and no request has been sent.
-     * The app does not wait for the PIR sensor (PIC-115).
+     * Asks once whether there is presence and enables or disables the
+     * request accordingly. The screen calls it every [PRESENCE_POLL_MS].
+     *
+     * Presence only enables the request; it never authorizes access.
      */
-    fun canRequestAccess(): Boolean = state == AppState.IDENTIFIED
+    @Synchronized
+    fun checkPresence(): PresenceStatus {
+        if (state != AppState.IDENTIFIED && state != AppState.READY) return PresenceStatus.ABSENT
+
+        val present = try {
+            client.getPresence()
+        } catch (_: ConnectionException) {
+            state = AppState.IDENTIFIED
+            return PresenceStatus.UNREACHABLE
+        }
+
+        state = if (present) AppState.READY else AppState.IDENTIFIED
+        return if (present) PresenceStatus.PRESENT else PresenceStatus.ABSENT
+    }
+
+    /** True only while a user is identified and presence has been detected. */
+    fun canRequestAccess(): Boolean = state == AppState.READY
 
     /**
      * Sends the access request and returns the result from the Raspberry Pi.
@@ -95,7 +126,7 @@ class AccessManager(private val client: RaspberryClient) {
     @Synchronized
     fun requestAccess(): AccessResult {
         val user = currentUser
-        check(user != null && state == AppState.IDENTIFIED) { "The access request is not enabled" }
+        check(user != null && state == AppState.READY) { "The access request is not enabled" }
 
         state = AppState.SENDING
         val result = client.sendRequest(user.newAccessRequest())
@@ -105,14 +136,42 @@ class AccessManager(private val client: RaspberryClient) {
     }
 
     /**
+     * Presence check for the camera view: the facial access is enabled
+     * under the same condition as the request with code and key (FR-16,
+     * FR-22). Nobody is identified yet, so it only remembers whether the
+     * Raspberry Pi saw someone. The screen calls it every [PRESENCE_POLL_MS].
+     */
+    @Synchronized
+    fun checkPresenceForFace(): PresenceStatus {
+        if (state != AppState.IDLE) {
+            presentForFace = false
+            return PresenceStatus.ABSENT
+        }
+        val present = try {
+            client.getPresence()
+        } catch (_: ConnectionException) {
+            presentForFace = false
+            return PresenceStatus.UNREACHABLE
+        }
+        presentForFace = present
+        return if (present) PresenceStatus.PRESENT else PresenceStatus.ABSENT
+    }
+
+    /** True only while nobody is identified and presence has been detected. */
+    fun canRequestAccessByFace(): Boolean = presentForFace && state == AppState.IDLE
+
+    /**
      * Facial access (FR-22): sends the photos and lets the Raspberry Pi
      * identify the face and decide. Only a recognized face ends in a
      * result screen; anything else returns to the start so the user can
      * use their code and key. A recognized user without access gets the
      * denial: their key would give the same answer.
+     *
+     * @throws IllegalStateException if there is no presence (FR-16).
      */
     @Synchronized
     fun requestAccessByFace(photos: List<ByteArray>): FaceOutcome {
+        check(canRequestAccessByFace()) { "The facial access is not enabled" }
         reset()
         if (photos.isEmpty()) return FaceOutcome.NO_FACE
 
@@ -148,6 +207,11 @@ class AccessManager(private val client: RaspberryClient) {
     fun reset() {
         currentUser = null
         lastResult = null
+        presentForFace = false
         state = AppState.IDLE
+    }
+
+    companion object {
+        const val PRESENCE_POLL_MS = 1_000L
     }
 }

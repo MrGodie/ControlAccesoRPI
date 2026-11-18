@@ -7,8 +7,7 @@ stateDiagram-v2
 
     Idle --> PresenceDetected: PIR active
     PresenceDetected --> Idle: timeout
-    PresenceDetected --> Validating: face, GUI or buttons
-    Idle --> Validating: app request (no presence needed)
+    PresenceDetected --> Validating: face, GUI, buttons or app request
 
     Validating --> Authorized: active user, role allows access
     Validating --> Denied: unknown or no permission
@@ -23,14 +22,15 @@ stateDiagram-v2
 ```mermaid
 stateDiagram-v2
     [*] --> IDLE
-    IDLE --> SENDING: tap Entrar con rostro (photos)
+    IDLE --> SENDING: PIR presence, then tap Entrar con rostro (photos)
     SENDING --> IDLE: face not recognized, no face,<br/>not available, go to code and key
     IDLE --> IDENTIFIED: user recognized
     IDLE --> IDLE: not recognized or no connection
 
-    IDENTIFIED --> IDLE: cancel
+    IDENTIFIED --> READY: PIR presence = true
+    IDENTIFIED --> IDLE: timeout or cancel
 
-    IDENTIFIED --> SENDING: tap Request access
+    READY --> SENDING: tap Request access
     SENDING --> SHOWING_RESULT: answer received (or face recognized)
     SENDING --> SHOWING_RESULT: timeout, technical error
 

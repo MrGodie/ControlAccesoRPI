@@ -1,17 +1,19 @@
 ```mermaid
 flowchart LR
     subgraph L1["User"]
-        S([Start]) --> LOOK[Look at the camera,<br/>tap Entrar con rostro]
+        S([Start]) --> WAIT
+        LOOK[Look at the camera,<br/>tap Entrar con rostro]
         ID[Enter ID and PIN]
         TAP[Tap Request access]
         SEE[See result]
     end
 
     subgraph L2["Mobile app"]
+        WAIT[Wait for presence<br/>Entrar con rostro disabled]
         PHOTOS[Take 3 photos,<br/>send them to the Raspberry Pi]
         WHY[Open the ID and PIN form<br/>with the reason]
         REG{Registered user?}
-        READY[Request enabled<br/>no presence needed]
+        READY[Request enabled<br/>while presence lasts]
         SEND[Send request to the Raspberry Pi]
         NET{Answer received?}
         SHOW[Show authorized / denied]
@@ -20,6 +22,7 @@ flowchart LR
     end
 
     subgraph L3["Raspberry Pi"]
+        PIR[PIR detects presence]
         FACE{Face recognized?<br/>face.py}
         VAL[[Shared validation<br/>validator.py]]
         RES{Result}
@@ -30,6 +33,8 @@ flowchart LR
         OTHER[/Face, GUI, buttons/] -.-> VAL
     end
 
+    PIR --> WAIT
+    WAIT -->|presence = true| LOOK
     LOOK --> PHOTOS --> FACE
     FACE -- Yes --> VAL
     FACE -- "No, no face, not available" --> WHY --> ID
@@ -51,5 +56,5 @@ flowchart LR
     classDef app fill:#DDEBF7,stroke:#1F4E79,color:#1F3864;
     class OK ok;
     class NO,ERR,TECH bad;
-    class SEND,READY,PHOTOS,WHY app;
+    class SEND,WAIT,READY,PHOTOS,WHY app;
 ```

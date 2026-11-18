@@ -25,8 +25,18 @@ sequenceDiagram
     Note over API: Identification only: no LED, no motor, no access attempt,<br/>logged in the event log as an identification
     API-->>C: 200 {identified, name} or 503 on a technical failure
     C-->>M: name, null, or ConnectionException
-    M-->>UI: IDENTIFIED: go to request view (button enabled)
-    Note over UI: The app does not ask for PIR presence (PIC-115)
+    M-->>UI: IDENTIFIED: go to request view (button disabled)
+
+    loop Every 1 s while the request view is open
+        UI->>M: checkPresence()
+        M->>C: getPresence()
+        C->>API: GET /api/presence
+        API->>HW: presencia_reciente()
+        API-->>C: {present: true / false}
+        C-->>M: true / false
+        M-->>UI: PRESENT / ABSENT / UNREACHABLE
+    end
+    Note over UI: "Request access" is enabled only while PRESENT
 
     U->>UI: Tap "Request access"
     UI->>M: requestAccess()
@@ -75,6 +85,15 @@ sequenceDiagram
         participant V as validator.py
         participant HW as controller.py + GPIO
     end
+
+    loop Every 1 s while the camera view is open
+        F->>M: checkPresenceForFace()
+        M->>C: getPresence()
+        C->>API: GET /api/presence
+        API-->>C: {present: true / false}
+        M-->>F: PRESENT / ABSENT / UNREACHABLE
+    end
+    Note over F: "Entrar con rostro" is enabled only while PRESENT (FR-16)
 
     U->>F: Tap "Entrar con rostro"
     F->>F: Take 3 photos, upright, 640 px JPEG

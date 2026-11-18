@@ -29,7 +29,7 @@ flowchart TD
         A2 -- POST /api/access/face --> A5{Face in the photos<br/>recognized?}
         A5 -- Yes --> A8[[Validate, respond and log<br/>method = app_facial]]
         A5 -- No --> A6[Answer: not recognized, no face<br/>or not available, log identification]
-        A2 -- GET /api/presence --> A3[Return PIR state<br/>not used by the app]
+        A2 -- GET /api/presence --> A3[Return PIR state:<br/>enables the request in the app]
         A3 & A4 & A6 & A7 & A8 --> A1
     end
 

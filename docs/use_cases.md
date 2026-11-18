@@ -11,6 +11,7 @@ flowchart LR
         UC4(["UC4 View result: authorized / denied"])
         UC5(["UC5 Notify technical failure"])
         UC6(["UC6 Return to initial state"])
+        UC7(["UC7 Check presence detected by PIR"])
     end
 
     U --- UC0
@@ -18,6 +19,8 @@ flowchart LR
     U --- UC3
     U --- UC4
 
+    UC0 -.->|«include»| UC7
+    UC3 -.->|«include»| UC7
     UC0 -.->|«include»| UC4
     UC2 -.->|«extend»<br/>face not recognized,<br/>no face, not available| UC0
     UC2 -.->|«include»| UC1
@@ -28,4 +31,5 @@ flowchart LR
     UC0 --- RPI
     UC1 --- RPI
     UC3 --- RPI
+    UC7 --- RPI
 ```

@@ -18,6 +18,7 @@ flowchart LR
     D5[(D5 eventos)]
 
     U -->|Presence via PIR| P1
+    P1 -->|Presence status| APP
     P1 -->|Enable identification| P2
     U -->|Face, ID and PIN| P2
     APP -->|ID + PIN, method = app<br/>or face photos, method = app_facial| P2

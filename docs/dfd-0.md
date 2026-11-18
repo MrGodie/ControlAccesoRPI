@@ -10,7 +10,7 @@ flowchart LR
 
     U -->|Face, ID, PIN, request tap| APP
     APP -->|Face photos, identification and access request: HTTP / JSON| S
-    S -->|Identification and result| APP
+    S -->|Presence status and result| APP
     APP -->|Authorized / denied / technical error| U
 
     A -->|User data, role, PIN, face samples| S

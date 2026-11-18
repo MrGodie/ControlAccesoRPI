@@ -7,6 +7,7 @@
     <string name="face_subtitle">Mira a la cámara para entrar con tu rostro</string>
     <string name="face_button">Entrar con rostro</string>
     <string name="face_code_button">Usar código y clave</string>
+    <string name="face_presence_detected">Presencia detectada.\nYa puedes entrar con tu rostro.</string>
     <string name="face_capturing">Mantente quieto, tomando fotos…</string>
     <string name="face_sending">Reconociendo tu rostro…</string>
     <string name="face_note">Las fotos se envían al punto de acceso y no se guardan.</string>
@@ -34,10 +35,12 @@
     <!-- View 2: access request -->
     <string name="request_greeting">Hola, %1$s</string>
     <string name="request_greeting_no_name">Hola</string>
-    <string name="request_ready">Ya puedes solicitar acceso.</string>
+    <string name="request_waiting_presence">Acércate al punto de acceso.\nEsperando a que el sensor detecte tu presencia…</string>
+    <string name="request_presence_detected">Presencia detectada.\nYa puedes solicitar acceso.</string>
+    <string name="request_unreachable">Sin conexión con el punto de acceso.\nReintentando…</string>
     <string name="request_sending">Enviando solicitud…</string>
     <string name="request_button">Solicitar acceso</string>
-    <string name="request_note">El sistema decide si el acceso se autoriza.</string>
+    <string name="request_presence_note">La presencia solo habilita la solicitud. El sistema decide si el acceso se autoriza.</string>
 
     <!-- View 3: result -->
     <string name="result_authorized_title">Acceso autorizado</string>

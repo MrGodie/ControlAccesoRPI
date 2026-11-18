@@ -19,7 +19,7 @@ The twelve steps the project brief asks for, in its order.
 | # | Step | Expected | Result | Evidence |
 | :--- | :--- | :--- | :--- | :--- |
 | A1 | The PIR sensor detects presence | The terminal prints `Presencia detectada` | | |
-| A2 | The request is enabled in the app | After identifying, the button "Solicitar acceso" is enabled; the app does not wait for presence (PIC-115) | | |
+| A2 | The request is enabled in the app | After identifying, the button "Solicitar acceso" becomes enabled; without presence it stays disabled | | |
 | A3 | The user identifies themselves | The app shows "Hola, *name*" | | |
 | A4 | The user requests access from the phone | The app shows "Enviando solicitud…" | | |
 | A5 | The app communicates with the Raspberry Pi | The terminal prints `API <phone address> - "POST /api/access HTTP/1.1" 200 -` | | |
@@ -53,7 +53,7 @@ FROM intentos_acceso ORDER BY id DESC LIMIT 5;
 | # | Step | Expected | Result | Evidence |
 | :--- | :--- | :--- | :--- | :--- |
 | C1 | Stop the database (`sudo systemctl stop mariadb`) and request access | Amber view "No se pudo completar"; red LED blinks; the motor does not move | | |
-| C2 | Turn off the Wi-Fi of the phone on the request view and tap "Solicitar acceso" | Amber view "No se pudo completar": "No hubo respuesta del punto de acceso. Tu acceso no fue rechazado…" | | |
+| C2 | Turn off the Wi-Fi of the phone on the request view | The app shows "Sin conexión con el punto de acceso" and the button is disabled | | |
 | C3 | Start the database again and repeat A | Works as before | | |
 
 ## D. The previous access methods still work
@@ -75,7 +75,8 @@ With the API running. Each one must behave as it did before Integrativo 4.
 
 | # | Step | Expected | Result | Evidence |
 | :--- | :--- | :--- | :--- | :--- |
-| E1 | A user with a registered face opens the app and taps "Entrar con rostro" | Green view "Acceso autorizado" with their name; LED, sound and motor as in A | | |
+| E0 | Open the app with nobody in front of the PIR | "Entrar con rostro" is disabled and the view says "Acércate al punto de acceso…" | | |
+| E1 | With presence detected, a user with a registered face taps "Entrar con rostro" | Green view "Acceso autorizado" with their name; LED, sound and motor as in A | | |
 | E2 | The attempt is logged | A new row in `intentos_acceso` with `metodo = 'app_facial'` | | |
 | E3 | A person without a registered face tries | The app goes to the form with "No te reconocimos. Usa tu código y clave."; no LED, no motor | | |
 | E4 | Cover the camera and try | The form with "No se detectó tu rostro. Usa tu código y clave." | | |
@@ -85,5 +86,5 @@ With the API running. Each one must behave as it did before Integrativo 4.
 ## Notes for the run
 
 - The person with the phone also triggers the access cycle of the Raspberry Pi, because the PIR starts both. If that person has a registered face, the facial recognition can open the door before the app does. Decide beforehand who stands in front of the camera, or run A with `RECONOCIMIENTO_ACTIVO = False`.
-- The project brief describes presence first and identification second. Since PIC-115 the app does not depend on presence, so the PIR step (A1) only starts the cycle of the Raspberry Pi; the demonstration can still follow the order of the brief.
+- The project brief describes presence first and identification second. The app works in either order, but the demonstration should follow the order of the brief.
 - The code and key travel over plain HTTP on the local network. It is a known limitation, to be mentioned in the presentation.

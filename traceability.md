@@ -33,13 +33,13 @@ Jira project: **PIC** (ControlAccesoRPI) · Repository: `MrGodie/ControlAccesoRP
 | **FR-13** Guided facial enrollment flow for the administrator | PIC-12, PIC-15, PIC-61, PIC-70, PIC-71, PIC-75, PIC-80 | #73, #83, #84, #88, #94 | Pending — flow implemented in `src/enrollment.py` (new users, and existing users since #94), no recorded verification |
 | **FR-14** Store the facial template with the user, deleted along with the user | PIC-9, PIC-10, PIC-11, PIC-74, PIC-77 | #70, #71, #87, #89 | Pending — `ON DELETE CASCADE` is declared in `schema.sql` and `migration.sql`; cascade delete not verified |
 | **FR-15** Identify the user from the mobile application | PIC-105, PIC-97, PIC-102, PIC-100, PIC-88 | #104, #105, #106, #107 | Automated on a PC (`/api/login` over HTTP; `AccessManagerTest`, `ScreensTest`): a wrong code and a wrong key give the same answer; pending on the real Raspberry Pi and on a phone (PIC-107) |
-| **FR-16** Enable the mobile access request as soon as the user is identified, without waiting for the PIR | PIC-105, PIC-97, PIC-100, PIC-89, PIC-115 | #102, #104, #106, #107, #113 | Changed in PIC-115: the app no longer asks for presence. Automated on a PC (`AccessManagerTest`, `ScreensTest`: the button is enabled after identifying and `/api/presence` is never called); pending on a phone (PIC-107) |
+| **FR-16** Enable the mobile access request only after the PIR detects presence | PIC-105, PIC-97, PIC-100, PIC-89, PIC-115, PIC-116 | #102, #104, #106, #107, #113, #116 | #113 removed the condition and #116 restored it, as the project brief requires; the facial access has the same condition (#114). Automated on a PC with a simulated PIR (`presencia_reciente()`; request button disabled without presence in `ScreensTest`); pending on the real Raspberry Pi and on a phone (PIC-107) |
 | **FR-17** Send the access request from the app and receive the result there | PIC-105, PIC-97, PIC-100, PIC-89 | #103, #104, #106, #107 | Automated on a PC: the Kotlin client against the Python API with simulated hardware (authorized request moves the motor and is logged as `app`); pending on the real Raspberry Pi and on a phone (PIC-107) |
 | **FR-18** App distinguishes authorized / denied / not completed for a technical condition | PIC-105, PIC-100, PIC-89 | #106, #107 | Automated on a PC (`ModelTest`, `RaspberryClientTest`, `ScreensTest`); pending on the real Raspberry Pi and on a phone (PIC-107) |
 | **FR-19** App returns to its initial state when the operation ends | PIC-105, PIC-100, PIC-89 | #106, #107 | Automated on a PC (`AccessManager.reset()`; result view closes by itself and the form comes back empty in `ScreensTest`); pending on a phone (PIC-107) |
 | **FR-20** Same validation logic for the app as for the existing access methods | PIC-105, PIC-97, PIC-111 | #104, #114 | By inspection: `src/api_server.py` calls `validator.verificar_usuario()` (code and key) or `validator.verificar_rostro()` (face) and has no permission check of its own; automated on a PC with the real `validator` and `controller` |
 | **FR-21** User management from the app with the same role capabilities as the GUI | PIC-108, PIC-90, PIC-99, PIC-112, PIC-114 | #110, #112 | Pending — not implemented in the app. The GUI can change a user's role since PIC-114 (`db.cambiar_rol`), tested on a PC against a throwaway MySQL |
-| **FR-22** Facial access from the app with the phone camera, decided on the Raspberry Pi | PIC-108, PIC-111 | #110, #114 | Pending — implemented in PIC-111 (`POST /api/access/face`, `face.identificar_imagenes`, `FaceActivity`). Automated on a PC: the API with the real `face.py` and a simulated model; the app with `AccessManagerTest`, `RaspberryClientTest` and `ScreensTest`. Not yet run on the Raspberry Pi or on a phone |
+| **FR-22** Facial access from the app with the phone camera, decided on the Raspberry Pi | PIC-108, PIC-111 | #110, #114 | Pending — implemented in PIC-111 (`POST /api/access/face`, `face.identificar_imagenes`, `FaceActivity`), enabled only with PIR presence (`checkPresenceForFace`). Automated on a PC: the API with the real `face.py` and a simulated model; the app with `AccessManagerTest`, `RaspberryClientTest` and `ScreensTest`. Not yet run on the Raspberry Pi or on a phone |
 | **FR-23** Log every relevant event, not only access attempts | PIC-108, PIC-109 | #110, #111 | Pending — implemented in #111 (`src/bitacora.py`, table `eventos`), tested on a PC against a throwaway MySQL; not yet run on the Raspberry Pi |
 | **FR-24** Without connection the app never reports access as authorized and disables administration | PIC-108, PIC-113 | #110 | Pending — not implemented |
 | **FR-25** Events produced without connection are queued on the phone and synced once | PIC-108, PIC-113 | #110 | Pending — not implemented |
@@ -78,6 +78,7 @@ Jira project: **PIC** (ControlAccesoRPI) · Repository: `MrGodie/ControlAccesoRP
 | Sequence and state diagrams | PIC-24, PIC-58 | #76 |
 | Use case and class diagrams for the mobile app | PIC-96 | #98 |
 | Mobile app wireframes | PIC-101 | #100 |
+| Facial access wireframes and updated mobile sheets | PIC-111 | #115 |
 | Verification checklist for the prototype and the phone | PIC-107 | #108 |
 | Requirements document updated for facial recognition | PIC-25 | #69 |
 | System architecture diagram | PIC-23 | #77 |
@@ -106,9 +107,9 @@ Open items that keep requirements from being fully traceable:
   mirror (#112), and the facial access from the app (FR-22, NFR-14, #114).
   The rest is planned in PIC-90, PIC-93, PIC-99, PIC-110, PIC-112 and PIC-113.
   NFR-09 was changed to allow administration from the app.
-- **FR-16 changed (PIC-115, #113).** The app no longer waits for PIR presence.
-  The project brief lists presence as the first step of the access from the
-  app, so the change still has to be confirmed with the professor.
+- **FR-16 removed and restored.** #113 (PIC-115) made the app stop waiting
+  for the PIR; the project brief requires it, so #116 (PIC-116) restored it
+  and #114 applies it to the facial access too.
 - **FR-01 and FR-04 disagree with the configuration.** FR-01 asks for a key of
   4 to 6 presses and FR-04 mentions a length of 3; `LONGITUD_CLAVE` in
   `config.py` is 3.
