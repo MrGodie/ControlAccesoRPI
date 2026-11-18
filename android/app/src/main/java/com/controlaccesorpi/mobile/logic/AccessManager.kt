@@ -2,6 +2,7 @@ package com.controlaccesorpi.mobile.logic
 
 import com.controlaccesorpi.mobile.model.AccessResult
 import com.controlaccesorpi.mobile.model.AppState
+import com.controlaccesorpi.mobile.model.ResultStatus
 import com.controlaccesorpi.mobile.model.User
 import com.controlaccesorpi.mobile.network.ConnectionException
 import com.controlaccesorpi.mobile.network.RaspberryClient
@@ -17,6 +18,27 @@ enum class IdentifyOutcome {
     NOT_RECOGNIZED,
 
     /** Technical failure: never shown as "wrong code or key". */
+    CONNECTION_ERROR,
+}
+
+/** What happened with the facial access (FR-22). */
+enum class FaceOutcome {
+    /** The face was recognized and the Raspberry Pi decided: see [AccessManager.lastResult]. */
+    RESULT,
+
+    /** There was a face, but it does not match any registered user. */
+    NOT_RECOGNIZED,
+
+    /** None of the photos had a face. */
+    NO_FACE,
+
+    /** Facial recognition is turned off or not installed on the Raspberry Pi. */
+    UNAVAILABLE,
+
+    /** Technical failure on the Raspberry Pi (database). Never a denial. */
+    SYSTEM_ERROR,
+
+    /** The Raspberry Pi could not be reached. */
     CONNECTION_ERROR,
 }
 
@@ -80,6 +102,45 @@ class AccessManager(private val client: RaspberryClient) {
         lastResult = result
         state = AppState.SHOWING_RESULT
         return result
+    }
+
+    /**
+     * Facial access (FR-22): sends the photos and lets the Raspberry Pi
+     * identify the face and decide. Only a recognized face ends in a
+     * result screen; anything else returns to the start so the user can
+     * use their code and key. A recognized user without access gets the
+     * denial: their key would give the same answer.
+     */
+    @Synchronized
+    fun requestAccessByFace(photos: List<ByteArray>): FaceOutcome {
+        reset()
+        if (photos.isEmpty()) return FaceOutcome.NO_FACE
+
+        state = AppState.SENDING
+        val answer = try {
+            client.sendFaceRequest(photos)
+        } catch (_: ConnectionException) {
+            reset()
+            return FaceOutcome.CONNECTION_ERROR
+        }
+
+        val outcome = when (answer.result) {
+            "rostro_no_reconocido" -> FaceOutcome.NOT_RECOGNIZED
+            "sin_rostro" -> FaceOutcome.NO_FACE
+            "rostro_no_disponible" -> FaceOutcome.UNAVAILABLE
+            else -> when (ResultStatus.fromApi(answer.result)) {
+                ResultStatus.AUTHORIZED, ResultStatus.DENIED_NO_PERMISSION -> FaceOutcome.RESULT
+                else -> FaceOutcome.SYSTEM_ERROR
+            }
+        }
+
+        if (outcome != FaceOutcome.RESULT) {
+            reset()
+            return outcome
+        }
+        lastResult = AccessResult(ResultStatus.fromApi(answer.result), answer.name)
+        state = AppState.SHOWING_RESULT
+        return outcome
     }
 
     /** Back to the initial state, forgetting the identification data (FR-19). */

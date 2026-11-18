@@ -1,6 +1,7 @@
 package com.controlaccesorpi.mobile
 
 import com.controlaccesorpi.mobile.logic.AccessManager
+import com.controlaccesorpi.mobile.logic.FaceOutcome
 import com.controlaccesorpi.mobile.logic.IdentifyOutcome
 import com.controlaccesorpi.mobile.model.AppState
 import com.controlaccesorpi.mobile.model.ResultStatus
@@ -122,6 +123,56 @@ class AccessManagerTest {
 
         assertThrows(IllegalStateException::class.java) { manager.requestAccess() }
         assertEquals(1, pi.callsTo("/api/access").size)
+    }
+
+    private val photo = listOf(byteArrayOf(1, 2, 3))
+
+    @Test
+    fun `a recognized face with access ends in the authorized result`() {
+        pi.answer("/api/access/face", 200, """{"result": "autorizado", "name": "Hugo"}""")
+        assertEquals(FaceOutcome.RESULT, manager.requestAccessByFace(photo))
+        assertEquals(ResultStatus.AUTHORIZED, manager.lastResult?.status)
+        assertEquals("Hugo", manager.lastResult?.userName)
+        assertEquals(AppState.SHOWING_RESULT, manager.state)
+        assertTrue("no code or key is sent", pi.callsTo("/api/login").isEmpty())
+    }
+
+    @Test
+    fun `a recognized face without access is a denial, not a fallback`() {
+        pi.answer("/api/access/face", 200, """{"result": "denegado_sin_permiso", "name": "Beto"}""")
+        assertEquals(FaceOutcome.RESULT, manager.requestAccessByFace(photo))
+        assertEquals(ResultStatus.DENIED_NO_PERMISSION, manager.lastResult?.status)
+    }
+
+    @Test
+    fun `a face that does not work sends the user to the code and key`() {
+        val cases = mapOf(
+            """{"result": "rostro_no_reconocido", "name": null}""" to FaceOutcome.NOT_RECOGNIZED,
+            """{"result": "sin_rostro", "name": null}""" to FaceOutcome.NO_FACE,
+            """{"result": "error_sistema", "name": null}""" to FaceOutcome.SYSTEM_ERROR,
+            """{"result": "algo_nuevo"}""" to FaceOutcome.SYSTEM_ERROR,
+        )
+        for ((body, expected) in cases) {
+            pi.answer("/api/access/face", 200, body)
+            assertEquals(body, expected, manager.requestAccessByFace(photo))
+            assertEquals(body, AppState.IDLE, manager.state)
+            assertNull(body, manager.lastResult)
+        }
+        pi.answer("/api/access/face", 503, """{"result": "rostro_no_disponible"}""")
+        assertEquals(FaceOutcome.UNAVAILABLE, manager.requestAccessByFace(photo))
+    }
+
+    @Test
+    fun `a facial access without connection is not a denial`() {
+        pi.answer("/api/access/face", 500, "boom")
+        assertEquals(FaceOutcome.CONNECTION_ERROR, manager.requestAccessByFace(photo))
+        assertEquals(AppState.IDLE, manager.state)
+    }
+
+    @Test
+    fun `no photos means no request`() {
+        assertEquals(FaceOutcome.NO_FACE, manager.requestAccessByFace(emptyList()))
+        assertTrue(pi.calls.isEmpty())
     }
 
     @Test

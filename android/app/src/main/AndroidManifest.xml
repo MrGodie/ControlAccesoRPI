@@ -4,6 +4,10 @@
     <!-- The app only talks to the Raspberry Pi over the local network. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Facial access (FR-22). Without a camera the app still works with code and key. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+
     <!--
         usesCleartextTraffic: the Raspberry Pi API is plain HTTP on the
         local network, and Android blocks plain HTTP by default.
@@ -17,17 +21,23 @@
         android:theme="@style/Theme.ControlAcceso"
         android:usesCleartextTraffic="true">
 
-        <!-- View 1: identification. It is where every operation starts and ends. -->
+        <!-- View 0: facial access with the front camera. The app opens here (FR-22). -->
         <activity
-            android:name=".ui.IdentificationActivity"
+            android:name=".ui.FaceActivity"
             android:exported="true"
-            android:screenOrientation="portrait"
-            android:windowSoftInputMode="adjustResize">
+            android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- View 1: identification with code and key, also the fallback when the face fails. -->
+        <activity
+            android:name=".ui.IdentificationActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="adjustResize" />
 
         <!-- View 2: access request, enabled once the user is identified. -->
         <activity
