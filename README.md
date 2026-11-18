@@ -83,6 +83,7 @@ The system implements a modular architecture under the src/ directory to guarant
 *   *gui.py*: Presentation layer implemented in Tkinter. Provides a desktop interface for entering credentials via masked input fields.
 *   *validator.py*: Decoupled credential evaluation logic. Normalizes inputs captured from both the physical buttons and the GUI before forwarding verification requests to the data layer.
 *   *db.py*: Persistence layer utilizing mysql.connector. Connects to a local relational database (control_acceso), authenticates credentials against stored records, and logs access attempts.
+*   *bitacora.py*: Full event log (FR-23). Records everything the system does, not only access attempts: identifications, administration sessions and changes, technical failures, start and stop. Events are queued and written by a background thread into the `eventos` table, so an access never waits for the database; if the database is down they are retried, and each event has its own `evento_uid` so a retry never stores it twice.
 *   *exit.py*: Actuation and output driver. Controls Pulse Width Modulation (PWM) duty cycles for servo-based locking mechanisms and triggers digital buzzers for acoustic signaling.
 *   *config.py*: Centralized configuration repository defining pin mappings, temporal constants, and system parameters without modifying business logic (FR-04).
 
@@ -212,6 +213,7 @@ ControlAccesoRPI/
 │       └── test/            (unit and screen tests)
 └── src/
     ├── api_server.py
+    ├── bitacora.py
     ├── camera.py
     ├── config.py
     ├── controller.py

@@ -105,6 +105,55 @@ def registrar_intento(usuario_id, metodo, resultado):
             cursor.close()
         conexion.close()
 
+
+def registrar_evento(evento):
+    """
+    Inserta un evento de la bitácora (FR-23). `evento` es el dict que arma
+    bitacora.py, con las columnas de la tabla eventos.
+
+    Devuelve True si quedó guardado, también cuando ya existía: un evento
+    que llega dos veces (un reintento) tiene el mismo evento_uid y el
+    índice único lo rechaza, pero eso significa que ya está en la base.
+    Devuelve "USUARIO_INEXISTENTE" si usuario_id o afectado_id no existen
+    (la llave foránea lo rechaza: reintentar igual no sirve) y False si la
+    base de datos no respondió y hay que reintentar.
+    """
+    try:
+        conexion = conectar()
+    except Error as e:
+        print("No se pudo registrar el evento (fallo de conexión):", e)
+        return False
+
+    cursor = None
+    try:
+        cursor = conexion.cursor()
+        cursor.execute(
+            "INSERT INTO eventos (evento_uid, fecha_hora, tipo, origen, usuario_id, "
+            "                     afectado_id, resultado, detalle, sin_conexion, dispositivo) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            (
+                evento["evento_uid"], evento["fecha_hora"], evento["tipo"],
+                evento["origen"], evento.get("usuario_id"), evento.get("afectado_id"),
+                evento.get("resultado"), evento.get("detalle"),
+                bool(evento.get("sin_conexion")), evento.get("dispositivo"),
+            )
+        )
+        conexion.commit()
+        return True
+    except Error as e:
+        # 1062 = Duplicate entry: el evento ya estaba guardado.
+        if getattr(e, "errno", None) == 1062:
+            return True
+        # 1452 = la llave foránea no encontró al usuario.
+        if getattr(e, "errno", None) == 1452:
+            return "USUARIO_INEXISTENTE"
+        print("Error al registrar el evento:", e)
+        return False
+    finally:
+        if cursor:
+            cursor.close()
+        conexion.close()
+
 def obtener_roles():
     """
     Devuelve [{id, nombre, descripcion, acceso_permitido,

@@ -85,6 +85,50 @@ CREATE TABLE IF NOT EXISTS intentos_acceso (
 ) ENGINE = InnoDB;
 
 -- -----------------------------------------------------
+-- Tabla: eventos (bitácora completa, FR-23)
+-- Todo lo que pasa en el sistema, no solo los intentos de acceso:
+-- accesos, identificaciones, administración, fallos técnicos y, más
+-- adelante, lo que la app registró sin conexión (FR-25).
+--
+-- evento_uid   identificador único del evento, generado donde ocurre.
+--              Si el mismo evento llega dos veces (un reintento), el
+--              índice único impide guardarlo doble.
+-- fecha_hora   cuándo ocurrió, en el reloj de quien lo registró.
+-- recibido     cuándo llegó a la base de datos.
+-- usuario_id   quién lo hizo, si se sabe.
+-- afectado_id  sobre quién se hizo (altas y enrolamientos).
+-- origen       'gui' | 'botones' | 'facial' | 'app' | 'sistema'
+-- sin_conexion TRUE si la app lo registró sin alcanzar la Raspberry.
+--
+-- Igual que intentos_acceso, no se edita ni se borra.
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS eventos (
+  id           INT          NOT NULL AUTO_INCREMENT,
+  evento_uid   CHAR(36)     NOT NULL,
+  fecha_hora   DATETIME     NOT NULL,
+  recibido     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  tipo         VARCHAR(40)  NOT NULL,
+  origen       VARCHAR(20)  NOT NULL,
+  usuario_id   INT          NULL,
+  afectado_id  INT          NULL,
+  resultado    VARCHAR(30)  NULL,
+  detalle      VARCHAR(255) NULL,
+  sin_conexion BOOLEAN      NOT NULL DEFAULT FALSE,
+  dispositivo  VARCHAR(64)  NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_eventos_uid (evento_uid),
+  KEY idx_eventos_fecha (fecha_hora),
+  KEY idx_eventos_usuario (usuario_id),
+  KEY idx_eventos_tipo (tipo),
+  CONSTRAINT fk_eventos_usuario
+    FOREIGN KEY (usuario_id) REFERENCES usuarios (id)
+    ON DELETE SET NULL,
+  CONSTRAINT fk_eventos_afectado
+    FOREIGN KEY (afectado_id) REFERENCES usuarios (id)
+    ON DELETE SET NULL
+) ENGINE = InnoDB;
+
+-- -----------------------------------------------------
 -- Roles base
 --
 --   usuario   entra al punto de acceso y nada más
