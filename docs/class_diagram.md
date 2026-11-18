@@ -4,6 +4,8 @@ classDiagram
 
     class FaceActivity {
         -startCamera()
+        -watchPresence()
+        -onPresenceChanged(status: PresenceStatus)
         -onFaceClicked()
         -takePhoto(capture: ImageCapture) Pair~ByteArray, Int~?
         -openForm(message: String?)
@@ -11,7 +13,15 @@ classDiagram
     class IdentificationActivity {
         -onIdentifyClicked()
         -showError(message: String?)
-        -askServerAddress()
+    }
+    class ServerAddressDialog {
+        <<extension>>
+        +askServerAddress(onSaved)$
+    }
+    class FacePhotos {
+        <<object>>
+        +MAX_SIDE: Int
+        +prepare(jpeg: ByteArray, rotationDegrees: Int)$ ByteArray?
     }
     class RequestActivity {
         -watchPresence()
@@ -41,6 +51,8 @@ classDiagram
         +identify(userId: String, pin: String) IdentifyOutcome
         +checkPresence() PresenceStatus
         +canRequestAccess() Boolean
+        +checkPresenceForFace() PresenceStatus
+        +canRequestAccessByFace() Boolean
         +requestAccessByFace(photos: List~ByteArray~) FaceOutcome
         +requestAccess() AccessResult
         +reset()
@@ -50,10 +62,20 @@ classDiagram
         -baseUrl: String
         -connectTimeoutMs: Int
         -readTimeoutMs: Int
+        -faceReadTimeoutMs: Int
         +identify(user: User) String?
         +getPresence() Boolean
         +sendRequest(request: AccessRequest) AccessResult
         +sendFaceRequest(photos: List~ByteArray~) FaceAnswer
+    }
+
+    class FaceAnswer {
+        +result: String
+        +name: String?
+    }
+
+    class ConnectionException {
+        <<exception>>
     }
 
     class User {
@@ -128,6 +150,9 @@ classDiagram
 
     FaceActivity --> AccessApp : uses
     FaceActivity ..> IdentificationActivity : fallback
+    FaceActivity ..> FacePhotos : prepares photos
+    FaceActivity ..> ServerAddressDialog : Conexión
+    IdentificationActivity ..> ServerAddressDialog : Conexión
     IdentificationActivity --> AccessApp : uses
     RequestActivity --> AccessApp : uses
     ResultActivity --> AccessApp : uses
@@ -137,6 +162,8 @@ classDiagram
     AccessApp "1" *-- "1" ServerSettings
 
     AccessManager "1" *-- "1" RaspberryClient
+    RaspberryClient ..> FaceAnswer : returns
+    RaspberryClient ..> ConnectionException : throws
     AccessManager "1" --> "0..1" User : currentUser
     AccessManager "1" --> "0..1" AccessResult : lastResult
     AccessManager --> AppState

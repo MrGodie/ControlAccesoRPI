@@ -4,14 +4,18 @@ flowchart TD
     B -- No --> A
     B -- Yes --> C{Identification channel}
 
-    C -- Mobile app --> M[App enables request,<br/>user sends ID + PIN]
     C -- Camera --> F[Capture and recognize face locally]
+    C -- Mobile app --> AF[App enabled by presence:<br/>phone camera, photos to the Raspberry Pi]
     C -- GUI --> G[ID + PIN on screen or buttons]
     C -- No monitor --> K[PIN with buttons]
 
     F --> FK{Known face?}
     FK -- No --> R4[Denied: unknown face]
     FK -- Yes --> V
+
+    AF --> AFK{Known face?}
+    AFK -- Yes --> V
+    AFK -- No, no face<br/>or not available --> M[ID + PIN in the app,<br/>with the reason]
     M --> V
     G --> V
     K --> V
@@ -33,5 +37,5 @@ flowchart TD
     classDef app fill:#DDEBF7,stroke:#1F4E79,color:#1F3864;
     class R1 ok;
     class R2,R3,R4,R5 bad;
-    class M app;
+    class AF,AFK,M app;
 ```
