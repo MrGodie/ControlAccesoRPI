@@ -212,15 +212,70 @@ def puede_consultar(usuario):
     return bool(usuario) and bool(usuario.get("puede_consultar"))
 
 
+def cambiar_rol(interfaz, actor, elegido):
+    """
+    Cambia el rol de `elegido` (PIC-114). El actor ya se revisó en
+    gestion_usuarios: aquí solo se llega pudiendo gestionar.
+
+    Devuelve True si el actor se cambió su propio rol: sus capacidades
+    ya no son las de cuando se identificó, así que la sesión debe
+    terminar y volver a identificarse.
+    """
+    roles = db.obtener_roles()
+    if roles == "ERROR_CONEXION" or not roles:
+        bitacora.registrar(bitacora.FALLO_TECNICO, "gui", usuario_id=actor["id"],
+                           detalle="No se pudieron leer los roles")
+        interfaz.mostrar_fallo("Sin conexión con la base de datos")
+        time.sleep(TIEMPO_PANTALLA_FALLO)
+        return False
+
+    error = None
+    while True:
+        rol_id = interfaz.pedir_rol(elegido, roles, error)
+        if rol_id is None or rol_id == elegido.get("rol_id"):
+            return False             # canceló o dejó el mismo rol
+        nuevo = next((r for r in roles if r["id"] == rol_id), None)
+        if nuevo is None:
+            print(f"El rol {rol_id} no está en la lista; se ignora.")
+            return False
+
+        cambio = f"{elegido['rol']} -> {nuevo['nombre']}"
+        resultado = db.cambiar_rol(elegido["id"], rol_id)
+        if resultado is True:
+            print(f"Rol del usuario {elegido['id']}: {cambio}")
+            bitacora.registrar(bitacora.CAMBIO_ROL, "gui", usuario_id=actor["id"],
+                               afectado_id=elegido["id"], resultado="cambiado",
+                               detalle=cambio)
+            return elegido["id"] == actor["id"]
+        if resultado == "ULTIMO_ADMIN":
+            bitacora.registrar(bitacora.CAMBIO_ROL, "gui", usuario_id=actor["id"],
+                               afectado_id=elegido["id"], resultado="rechazado",
+                               detalle=f"{cambio}: último usuario activo que puede gestionar")
+            error = "Es el último usuario activo que puede gestionar: no se le puede quitar"
+            continue
+        if resultado == "NO_EXISTE":
+            print(f"El usuario {elegido['id']} o el rol {rol_id} ya no existen; se ignora.")
+            return False
+
+        bitacora.registrar(bitacora.FALLO_TECNICO, "gui", usuario_id=actor["id"],
+                           afectado_id=elegido["id"], detalle="No se pudo cambiar el rol")
+        interfaz.mostrar_fallo("Sin conexión con la base de datos")
+        time.sleep(TIEMPO_PANTALLA_FALLO)
+        return False
+
+
 def gestion_usuarios(interfaz, usuario):
     """
     Pantalla de gestión: lista a los usuarios y, para quien pueda
-    gestionar, da de alta a los nuevos o registra el rostro de uno que
-    ya existe (PIC-80). La lista se vuelve a leer en cada vuelta para
-    que el recién enrolado aparezca de inmediato.
+    gestionar, da de alta a los nuevos, registra el rostro de uno que
+    ya existe (PIC-80) o le cambia el rol (PIC-114). La lista se vuelve
+    a leer en cada vuelta para que los cambios aparezcan de inmediato.
+
+    Devuelve "rol_propio" si el usuario se cambió su propio rol (la
+    sesión de administración debe terminar), o None.
 
     Un soporte llega hasta aquí pero solo mira: la pantalla no le
-    ofrece los botones de alta ni de enrolar, y si aun así llegara una
+    ofrece los botones de alta, de enrolar ni de rol, y si aun así llegara una
     de esas respuestas, se ignora. El permiso se revisa de este lado, no
     se confía en que la interfaz lo haya escondido.
     """
@@ -253,6 +308,20 @@ def gestion_usuarios(interfaz, usuario):
             resultado = enrollment.enrolar_existente(interfaz, elegido, actor=usuario)
             procesar_resultado_enrolamiento(resultado)
             print(f"Enrolamiento del usuario {elegido['id']}:", resultado)
+            continue
+
+        if isinstance(accion, tuple) and len(accion) == 2 and accion[0] == "rol":
+            if not gestiona:
+                print("El rol no puede cambiar roles; se ignora.")
+                bitacora.registrar(bitacora.ACCION_RECHAZADA, "gui", usuario_id=usuario["id"],
+                                   detalle="Cambiar el rol de un usuario sin poder gestionar")
+                continue
+            elegido = next((u for u in usuarios if u["id"] == accion[1]), None)
+            if elegido is None:
+                print(f"El usuario {accion[1]} no está en la lista; se ignora.")
+                continue
+            if cambiar_rol(interfaz, usuario, elegido):
+                return "rol_propio"
             continue
 
         if accion == "nuevo" and not gestiona:
@@ -291,7 +360,11 @@ def sesion_administracion(interfaz, usuario):
                                resultado="salir" if opcion == "salir" else "sin_respuesta")
             return
 
-        gestion_usuarios(interfaz, usuario)
+        if gestion_usuarios(interfaz, usuario) == "rol_propio":
+            print("Cambió su propio rol; tiene que volver a identificarse.")
+            bitacora.registrar(bitacora.ADMIN_FIN, "gui", usuario_id=usuario["id"],
+                               resultado="rol_propio")
+            return
 
 
 def ciclo_gui(interfaz):

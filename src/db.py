@@ -254,9 +254,10 @@ def obtener_usuarios():
     """
     Lista los usuarios para la pantalla de gestión.
 
-    Devuelve [{id, nombre, activo, rol, muestras}] donde `muestras` es cuántas
-    plantillas faciales tiene cargadas: 0 significa que todavía no está
-    enrolado. "ERROR_CONEXION" si la base de datos falla.
+    Devuelve [{id, nombre, activo, rol, rol_id, muestras}] donde `muestras`
+    es cuántas plantillas faciales tiene cargadas: 0 significa que todavía
+    no está enrolado. `rol_id` sirve para marcar el rol actual al
+    cambiarlo (PIC-114). "ERROR_CONEXION" si la base de datos falla.
     """
     try:
         conexion = conectar()
@@ -268,17 +269,81 @@ def obtener_usuarios():
     try:
         cursor = conexion.cursor(dictionary=True)
         cursor.execute(
-            "SELECT u.id, u.nombre, u.activo, r.nombre AS rol, "
+            "SELECT u.id, u.nombre, u.activo, r.nombre AS rol, u.rol_id, "
             "       COUNT(b.id) AS muestras "
             "FROM usuarios u "
             "JOIN roles r ON u.rol_id = r.id "
             "LEFT JOIN datos_biometricos b ON b.usuario_id = u.id "
-            "GROUP BY u.id, u.nombre, u.activo, r.nombre "
+            "GROUP BY u.id, u.nombre, u.activo, r.nombre, u.rol_id "
             "ORDER BY u.nombre"
         )
         return cursor.fetchall()
     except Error as e:
         print("Error al listar los usuarios:", e)
+        return "ERROR_CONEXION"
+    finally:
+        if cursor:
+            cursor.close()
+        conexion.close()
+
+
+def cambiar_rol(usuario_id, rol_id):
+    """
+    Cambia el rol de un usuario (PIC-114). Cualquier rol que pueda
+    gestionar puede cambiar cualquier rol, incluido el suyo, pero nunca
+    se deja al sistema sin un usuario activo que pueda gestionar: si no,
+    nadie podría volver a dar de alta ni cambiar roles.
+
+    Las filas se bloquean (FOR UPDATE) para que dos administradores que
+    se quitan el rol al mismo tiempo no dejen al sistema sin ninguno.
+
+    Devuelve True, "ULTIMO_ADMIN" si el cambio dejaría al sistema sin
+    nadie que gestione, "NO_EXISTE" si el usuario o el rol no existen, o
+    "ERROR_CONEXION".
+    """
+    try:
+        conexion = conectar()
+    except Error as e:
+        print("No se pudo cambiar el rol (fallo de conexión):", e)
+        return "ERROR_CONEXION"
+
+    cursor = None
+    try:
+        conexion.start_transaction()
+        cursor = conexion.cursor(dictionary=True)
+
+        cursor.execute(
+            "SELECT u.activo, r.puede_gestionar "
+            "FROM usuarios u JOIN roles r ON u.rol_id = r.id "
+            "WHERE u.id = %s FOR UPDATE OF u",
+            (usuario_id,)
+        )
+        actual = cursor.fetchone()
+        cursor.execute("SELECT puede_gestionar FROM roles WHERE id = %s", (rol_id,))
+        nuevo = cursor.fetchone()
+        if actual is None or nuevo is None:
+            conexion.rollback()
+            return "NO_EXISTE"
+
+        if actual["activo"] and actual["puede_gestionar"] and not nuevo["puede_gestionar"]:
+            cursor.execute(
+                "SELECT u.id FROM usuarios u JOIN roles r ON u.rol_id = r.id "
+                "WHERE r.puede_gestionar AND u.activo AND u.id <> %s FOR UPDATE OF u",
+                (usuario_id,)
+            )
+            if not cursor.fetchall():
+                conexion.rollback()
+                return "ULTIMO_ADMIN"
+
+        cursor.execute("UPDATE usuarios SET rol_id = %s WHERE id = %s", (rol_id, usuario_id))
+        conexion.commit()
+        return True
+    except Error as e:
+        print("Error al cambiar el rol:", e)
+        try:
+            conexion.rollback()
+        except Error:
+            pass
         return "ERROR_CONEXION"
     finally:
         if cursor:
