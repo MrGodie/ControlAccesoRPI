@@ -45,20 +45,6 @@ class RaspberryClient(
     }
 
     /**
-     * Whether the PIR sensor has detected presence at the access point.
-     *
-     * @throws ConnectionException on a technical failure.
-     */
-    @Throws(ConnectionException::class)
-    fun getPresence(): Boolean {
-        val response = call("GET", "/api/presence", null)
-        if (response.status != HttpURLConnection.HTTP_OK) {
-            throw ConnectionException("Unexpected answer to the presence check: HTTP ${response.status}")
-        }
-        return parse(response.body).optBoolean("present", false)
-    }
-
-    /**
      * Sends the access request. It never throws: a failure to reach the
      * Raspberry Pi comes back as [ResultStatus.CONNECTION_ERROR].
      */

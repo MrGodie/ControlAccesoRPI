@@ -2,30 +2,22 @@ package com.controlaccesorpi.mobile.ui
 
 import android.content.Intent
 import android.os.Bundle
-import android.os.SystemClock
 import android.view.View
 import android.widget.Button
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
 import com.controlaccesorpi.mobile.AccessApp
 import com.controlaccesorpi.mobile.R
 import com.controlaccesorpi.mobile.logic.AccessManager
-import com.controlaccesorpi.mobile.logic.PresenceStatus
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Second view: the identified user waits for the PIR sensor to detect
- * presence and then requests access. The button starts disabled and is
- * enabled only while the Raspberry Pi reports presence (FR-16).
- *
- * Presence enables the request; it does not authorize access.
+ * Second view: the identified user requests access. The request is
+ * enabled as soon as the user is identified; the app does not wait for
+ * the PIR sensor (FR-16, PIC-115). The Raspberry Pi decides the result.
  */
 class RequestActivity : AppCompatActivity() {
 
@@ -36,9 +28,7 @@ class RequestActivity : AppCompatActivity() {
     private lateinit var cancelButton: Button
     private lateinit var progress: View
 
-    private var presenceJob: Job? = null
     private var sending = false
-    private var openedAt = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -62,48 +52,17 @@ class RequestActivity : AppCompatActivity() {
         requestButton.setOnClickListener { onRequestClicked() }
         cancelButton.setOnClickListener { finish() }
 
-        openedAt = SystemClock.elapsedRealtime()
-        onPresenceChanged(PresenceStatus.ABSENT)
-        watchPresence()
+        showReady()
     }
 
-    /** Asks the Raspberry Pi about presence while this view is on screen. */
-    private fun watchPresence() {
-        presenceJob = lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                while (true) {
-                    val status = withContext(Dispatchers.IO) { manager.checkPresence() }
-                    if (sending) return@repeatOnLifecycle
-                    onPresenceChanged(status)
-
-                    // Nobody came to the access point: forget the user and go back.
-                    if (status != PresenceStatus.PRESENT &&
-                        SystemClock.elapsedRealtime() - openedAt > WAIT_LIMIT_MS
-                    ) {
-                        finish()
-                        return@repeatOnLifecycle
-                    }
-                    delay(AccessManager.PRESENCE_POLL_MS)
-                }
-            }
-        }
-    }
-
-    private fun onPresenceChanged(status: PresenceStatus) {
-        requestButton.isEnabled = status == PresenceStatus.PRESENT
-        statusText.setText(
-            when (status) {
-                PresenceStatus.PRESENT -> R.string.request_presence_detected
-                PresenceStatus.ABSENT -> R.string.request_waiting_presence
-                PresenceStatus.UNREACHABLE -> R.string.request_unreachable
-            }
-        )
+    private fun showReady() {
+        requestButton.isEnabled = manager.canRequestAccess()
+        statusText.setText(R.string.request_ready)
     }
 
     private fun onRequestClicked() {
         if (sending) return
         sending = true
-        presenceJob?.cancel()
 
         requestButton.isEnabled = false
         cancelButton.isEnabled = false
@@ -115,7 +74,8 @@ class RequestActivity : AppCompatActivity() {
                 try {
                     manager.requestAccess()
                 } catch (_: IllegalStateException) {
-                    // Presence went away between the last check and the tap.
+                    // The operation was reset before the tap (for example,
+                    // the user identified again): nothing was sent.
                     null
                 }
             }
@@ -124,17 +84,11 @@ class RequestActivity : AppCompatActivity() {
                 sending = false
                 cancelButton.isEnabled = true
                 progress.visibility = View.INVISIBLE
-                onPresenceChanged(PresenceStatus.ABSENT)
-                watchPresence()
+                showReady()
             } else {
                 startActivity(Intent(this@RequestActivity, ResultActivity::class.java))
                 finish()
             }
         }
-    }
-
-    companion object {
-        /** How long an identified user may wait for presence before the app starts over. */
-        private const val WAIT_LIMIT_MS = 60_000L
     }
 }
